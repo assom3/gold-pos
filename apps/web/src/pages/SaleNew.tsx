@@ -114,11 +114,20 @@ export default function SaleNew() {
       api.get<Paged<Item>>(`/items?status=AVAILABLE&pageSize=12${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   });
 
-  /* طريقة الدفع إلزامية: نختار الأولى (نقدي عادةً) تلقائياً، ويمكن تغييرها */
+  /* طريقة الدفع = نقدي أو صك مصدق؛ تُختار من بطاقة السياسة وتُسجَّل مع الفاتورة */
+  function paymentMethodIdFor(mode: SaleFxMode): string {
+    const methods = paymentMethods ?? [];
+    const match =
+      mode === 'CHEQUE'
+        ? methods.find((p) => p.value.includes('صك'))
+        : (methods.find((p) => p.value.includes('نقدي')) ?? methods[0]);
+    return match ? String(match.id) : '';
+  }
+
   useEffect(() => {
     if (paymentMethodId !== '' || !paymentMethods || paymentMethods.length === 0) return;
-    const first = paymentMethods[0];
-    if (first) setPaymentMethodId(String(first.id));
+    const first = paymentMethodIdFor('CASH');
+    if (first) setPaymentMethodId(first);
   }, [paymentMethods, paymentMethodId]);
 
   const currency = settings?.currency ?? 'LYD';
@@ -167,15 +176,6 @@ export default function SaleNew() {
     setCashFx((prev) => (valueOf(prev) > 0 ? prev : rate));
     setChequeFx((prev) => (valueOf(prev) > 0 ? prev : rate));
   }, [priceView?.current.fx?.value]);
-
-  /* اختيار «صك» كطريقة دفع يبدّل تلقائياً إلى سعر صرف الصك */
-  function choosePaymentMethod(id: string) {
-    setPaymentMethodId(id);
-    const method = paymentMethods?.find((p) => String(p.id) === id);
-    if (method && method.value.includes('صك') && fxMode !== 'CHEQUE') {
-      applyContext({ fxMode: 'CHEQUE' });
-    }
-  }
 
   /** السعر المقترح حسب سياسة هذه الفاتورة وسعر الصرف المختار */
   function suggestWith(
@@ -266,6 +266,8 @@ export default function SaleNew() {
     setFixedBasis(nextFixedBasis);
     setRoundingStep(nextRounding);
     setFxMode(nextFxMode);
+    const methodId = paymentMethodIdFor(nextFxMode);
+    if (methodId) setPaymentMethodId(methodId);
     setCashFx(nextCash);
     setChequeFx(nextFxMode === 'CHEQUE' && valueOf(nextCheque) <= 0 ? nextCash : nextCheque);
   }
@@ -356,7 +358,6 @@ export default function SaleNew() {
       setCart([]);
       setCustomerName('');
       setCustomerPhone('');
-      setPaymentMethodId('');
       setError(null);
       defaultsApplied.current = Boolean(settings);
       setProfitMode(settings?.profitMode ?? 'PERCENT');
@@ -368,6 +369,8 @@ export default function SaleNew() {
       setCashFx(marketFx > 0 ? marketFx : '');
       setChequeFx(marketFx > 0 ? marketFx : '');
       setFxMode('CASH');
+      const defaultMethod = paymentMethodIdFor('CASH');
+      if (defaultMethod) setPaymentMethodId(defaultMethod);
       toast.success(`تم إصدار الفاتورة ${sale.invoiceNo}`);
     },
     onError: (err: unknown) => {
@@ -849,8 +852,8 @@ export default function SaleNew() {
                 </Field>
 
                 <Field
-                  label="سعر الصرف المستعمل"
-                  hint={`سعر السوق الآن ${fmtMoney(marketFx)} ${currency}`}
+                  label="طريقة الدفع"
+                  hint={`تحدّد سعر الصرف المحفوظ مع الفاتورة · سعر السوق الآن ${fmtMoney(marketFx)} ${currency}`}
                 >
                   <div className="grid grid-cols-2 gap-1.5">
                     {(['CASH', 'CHEQUE'] as const).map((mode) => (
@@ -923,19 +926,15 @@ export default function SaleNew() {
                     dir="ltr"
                   />
                 </Field>
-                <Field label="طريقة الدفع" required hint={paymentMethods && paymentMethods.length === 0 ? 'أضف طريقة دفع من الإعدادات ← القوائم المرجعية' : undefined}>
-                  <Select
-                    value={paymentMethodId}
-                    onChange={(e) => choosePaymentMethod(e.target.value)}
-                    placeholder="اختر طريقة الدفع"
-                  >
-                    {(paymentMethods ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.value}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
+                <div className="rounded-xl border border-border bg-surface2/50 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-muted">طريقة الدفع المسجّلة</p>
+                  <p className="mt-1 text-[12px] font-medium text-text">
+                    {fxMode === 'CHEQUE' ? 'صك مصدق' : 'نقدي'}
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-4 text-muted">
+                    تُختار من بطاقة «سياسة الربح والتقريب» وتُحفظ مع الفاتورة.
+                  </p>
+                </div>
               </div>
             </Card>
 
@@ -996,7 +995,7 @@ export default function SaleNew() {
             <Card className="bg-surface2/40">
               <p className="text-[11px] leading-5 text-muted">
                 السعر المقترح يُحسب من سعر غرام العيار × وزن أساس الاحتساب + الحجر + الربح، ثم يُقرَّب حسب سياسة هذه
-                الفاتورة. سعر الصرف المستعمل (نقدي أو صك) يُحفظ مع الفاتورة، ويمكنك تعديل سعر أي قطعة قبل التأكيد.
+                الفاتورة. طريقة الدفع (نقدي أو صك مصدق) تحدّد سعر الصرف المحفوظ مع الفاتورة، ويمكنك تعديل سعر أي قطعة قبل التأكيد.
               </p>
             </Card>
           </div>
@@ -1055,7 +1054,7 @@ export default function SaleNew() {
             </div>
           ) : null}
           <p className="text-[11px] leading-5 text-muted">
-            طريقة الدفع: {paymentMethods?.find((p) => String(p.id) === paymentMethodId)?.value ?? 'غير محددة'}
+            طريقة الدفع: {fxMode === 'CHEQUE' ? 'صك مصدق' : 'نقدي'}
             {customerName.trim() ? ` · العميل: ${customerName.trim()}` : ''}
           </p>
           <p className="text-[11px] leading-5 text-muted">

@@ -86,13 +86,17 @@ export function Receipt({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[#666]">طريقة الدفع</span>
-          <span className="font-medium">{sale.paymentMethod?.value ?? 'غير محددة'}</span>
+          <span className="font-medium">
+            {sale.fxMode === 'CHEQUE'
+              ? 'صك مصدق'
+              : sale.fxMode === 'CASH'
+                ? 'نقدي'
+                : (sale.paymentMethod?.value ?? 'غير محددة')}
+          </span>
         </div>
         {sale.fxRate !== null ? (
           <div className="flex items-center justify-between">
-            <span className="text-[#666]">
-              سعر الصرف ({sale.fxMode === 'CHEQUE' ? 'صك مصدق' : 'نقدي'})
-            </span>
+            <span className="text-[#666]">سعر الصرف المعتمد</span>
             <span className="font-medium tabular-nums">{fmtMoney(sale.fxRate)}</span>
           </div>
         ) : null}

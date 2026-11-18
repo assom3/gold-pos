@@ -257,7 +257,11 @@ export default function SaleDetail() {
                   value={
                     <span className="inline-flex items-center gap-1.5">
                       <Wallet className="size-3 text-muted" />
-                      {sale.paymentMethod?.value ?? 'غير محددة'}
+                      {sale.fxMode === 'CHEQUE'
+                        ? 'صك مصدق'
+                        : sale.fxMode === 'CASH'
+                          ? 'نقدي'
+                          : (sale.paymentMethod?.value ?? 'غير محددة')}
                     </span>
                   }
                 />
@@ -309,8 +313,8 @@ export default function SaleDetail() {
                 ) : null}
                 {sale.fxRate !== null ? (
                   <DetailRow
-                    label="سعر الصرف"
-                    value={`${fmtMoney(sale.fxRate)} · ${sale.fxMode === 'CHEQUE' ? 'صك مصدق' : 'نقدي'}`}
+                    label="سعر الصرف المعتمد"
+                    value={fmtMoney(sale.fxRate)}
                   />
                 ) : null}
               </div>
