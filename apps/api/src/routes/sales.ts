@@ -20,7 +20,8 @@ const createSchema = z.object({
       }),
     )
     .min(1, 'الفاتورة يجب أن تحتوي على صنف واحد على الأقل'),
-  paymentMethodId: z.number().int().positive().nullable().optional(),
+  // طريقة الدفع إلزامية للفواتير الجديدة (الفواتير القديمة بلا طريقة تبقى كما هي)
+  paymentMethodId: z.number({ error: 'اختر طريقة الدفع' }).int().positive('اختر طريقة الدفع'),
   customerName: z.string().trim().max(160).nullable().optional(),
   customerPhone: z.string().trim().max(40).nullable().optional(),
   // سياسة الربح والتقريب المختارة لهذه الفاتورة (افتراضياً من الإعدادات)
@@ -110,7 +111,7 @@ salesRouter.post(
         requested.set(line.itemId, (requested.get(line.itemId) ?? 0) + line.quantity);
       }
 
-      if (body.paymentMethodId) {
+      {
         const method = await tx.lookup.findUnique({ where: { id: body.paymentMethodId } });
         if (!method || method.kind !== 'PAYMENT_METHOD') throw badRequest('طريقة الدفع المحددة غير صالحة');
       }
@@ -155,7 +156,7 @@ salesRouter.post(
         data: {
           invoiceNo,
           sellerId: req.user!.id,
-          paymentMethodId: body.paymentMethodId ?? null,
+          paymentMethodId: body.paymentMethodId,
           total,
           profitMode: body.profitMode ?? null,
           profitValue: body.profitMode === 'MANUAL' ? 0 : (body.profitValue ?? null),

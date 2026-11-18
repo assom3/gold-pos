@@ -1611,7 +1611,7 @@ const createSchema = z.object({
     quantity: z.number().int().min(1).max(9999).default(1),
     unitPrice: z.number().positive('سعر البيع يجب أن يكون أكبر من صفر'),
   })).min(1,'الفاتورة يجب أن تحتوي على صنف واحد على الأقل'),
-  paymentMethodId: z.number().int().positive().nullable().optional(),
+  paymentMethodId: z.number({ error: 'اختر طريقة الدفع' }).int().positive('اختر طريقة الدفع'),
   customerName: z.string().trim().max(160).nullable().optional(),
   customerPhone: z.string().trim().max(40).nullable().optional(),
   profitMode: z.enum(['PERCENT','FIXED','MANUAL']).nullable().optional(),

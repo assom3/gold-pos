@@ -114,6 +114,13 @@ export default function SaleNew() {
       api.get<Paged<Item>>(`/items?status=AVAILABLE&pageSize=12${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   });
 
+  /* طريقة الدفع إلزامية: نختار الأولى (نقدي عادةً) تلقائياً، ويمكن تغييرها */
+  useEffect(() => {
+    if (paymentMethodId !== '' || !paymentMethods || paymentMethods.length === 0) return;
+    const first = paymentMethods[0];
+    if (first) setPaymentMethodId(String(first.id));
+  }, [paymentMethods, paymentMethodId]);
+
   const currency = settings?.currency ?? 'LYD';
   const shopName = settings?.shopName ?? 'محل الذهب';
   const ounce = priceView?.current.ounce?.value ?? 0;
@@ -326,7 +333,7 @@ export default function SaleNew() {
           quantity: l.quantity,
           unitPrice: Number(l.unitPrice) || 0,
         })),
-        paymentMethodId: paymentMethodId ? Number(paymentMethodId) : null,
+        paymentMethodId: Number(paymentMethodId),
         customerName: customerName.trim() || null,
         customerPhone: customerPhone.trim() || null,
         profitMode,
@@ -916,11 +923,11 @@ export default function SaleNew() {
                     dir="ltr"
                   />
                 </Field>
-                <Field label="طريقة الدفع">
+                <Field label="طريقة الدفع" required hint={paymentMethods && paymentMethods.length === 0 ? 'أضف طريقة دفع من الإعدادات ← القوائم المرجعية' : undefined}>
                   <Select
                     value={paymentMethodId}
                     onChange={(e) => choosePaymentMethod(e.target.value)}
-                    placeholder="غير محددة"
+                    placeholder="اختر طريقة الدفع"
                   >
                     {(paymentMethods ?? []).map((p) => (
                       <option key={p.id} value={p.id}>
@@ -975,7 +982,7 @@ export default function SaleNew() {
                   size="lg"
                   className="mt-3 w-full"
                   icon={ReceiptIcon}
-                  disabled={cart.length === 0 || missingPrices > 0}
+                  disabled={cart.length === 0 || missingPrices > 0 || !paymentMethodId}
                   onClick={() => setReview(true)}
                 >
                   إتمام البيع
