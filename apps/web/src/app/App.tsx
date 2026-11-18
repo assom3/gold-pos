@@ -20,6 +20,8 @@ import StocktakeDetail from '../pages/StocktakeDetail';
 import Reports from '../pages/Reports';
 import SettingsPage from '../pages/Settings';
 import UsersPage from '../pages/Users';
+import Backups from '../pages/Backups';
+import Guide from '../pages/Guide';
 
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -43,7 +45,7 @@ function Forbidden() {
       <EmptyState
         icon={Lock}
         title="هذه الصفحة للمالك فقط"
-        description="ليست لديك صلاحية الوصول إلى التقارير أو الإعدادات أو إدارة المستخدمين."
+        description="ليست لديك صلاحية الوصول إلى التقارير أو الإعدادات أو المستخدمين أو النسخ الاحتياطي."
         action={
           <Button variant="primary" onClick={() => window.history.back()}>
             رجوع
@@ -122,6 +124,15 @@ export default function App() {
             </OwnerOnly>
           }
         />
+        <Route
+          path="backups"
+          element={
+            <OwnerOnly>
+              <Backups />
+            </OwnerOnly>
+          }
+        />
+        <Route path="guide" element={<Guide />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

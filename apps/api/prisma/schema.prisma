@@ -132,6 +132,7 @@ model User {
   stocktakesOpened  Stocktake[]  @relation("StocktakeOpenedBy")
   stocktakesClosed  Stocktake[]  @relation("StocktakeClosedBy")
   auditLogs         AuditLog[]
+  backupRuns        BackupRun[]
 
   @@index([role, active])
 }
@@ -419,4 +420,51 @@ model AuditLog {
 model Sequence {
   name  String @id @db.VarChar(40)
   value Int    @default(0)
+}
+
+// ───────────────────────────── النسخ الاحتياطي ─────────────────────────────
+
+enum BackupStatus {
+  RUNNING // قيد التنفيذ
+  OK      // نجحت
+  FAILED  // فشلت
+}
+
+enum BackupTrigger {
+  MANUAL    // يدوية من لوحة التحكم
+  SCHEDULED // مجدولة تلقائياً
+}
+
+// إعدادات النسخ الاحتياطي التلقائي — صف واحد (id = 1)
+model BackupSetting {
+  id Int @id @default(1)
+
+  enabled        Boolean @default(true)
+  // الفاصل بالساعات بين نسختين: 6 / 12 / 24 / 48 / 168
+  intervalHours  Int     @default(24)
+  // وقت التشغيل اليومي (HH:MM بتوقيت الخادم) عند فاصل 24 ساعة فأكثر
+  timeOfDay      String  @default("02:00") @db.VarChar(5)
+  // عدد النسخ الناجحة المحتفظ بها؛ الأقدم تُحذف تلقائياً
+  retentionCount Int     @default(14)
+
+  updatedAt DateTime @updatedAt
+}
+
+// سجل كل محاولة نسخ احتياطي (ناجحة أو فاشلة)
+model BackupRun {
+  id         Int           @id @default(autoincrement())
+  trigger    BackupTrigger
+  status     BackupStatus  @default(RUNNING)
+  startedAt  DateTime      @default(now())
+  finishedAt DateTime?
+
+  fileName  String? @db.VarChar(120)
+  sizeBytes BigInt?
+  error     String? @db.Text
+
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([startedAt])
+  @@index([status])
 }

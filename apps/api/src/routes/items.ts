@@ -503,6 +503,10 @@ itemsRouter.patch(
     ]);
 
     const updated = await prisma.$transaction(async (tx) => {
+      // قفل صف الصنف وإعادة فحص حالته: يمنع تعديله بالتزامن مع عملية بيع تُنهيه
+      const locked = await tx.$queryRaw<Array<{ status: string }>>`SELECT status FROM Item WHERE id = ${id} FOR UPDATE`;
+      if (locked[0]?.status !== 'AVAILABLE') throw badRequest('لا يمكن تعديل صنف مباع');
+
       await tx.setComponent.deleteMany({ where: { setItemId: id } });
 
       const item = await tx.item.update({

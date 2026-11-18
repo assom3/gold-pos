@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  BookOpen,
+  DatabaseBackup,
   BarChart3,
   ClipboardCheck,
   Coins,
@@ -50,6 +52,8 @@ const NAV: NavItem[] = [
   { to: '/reports', label: 'التقارير', icon: BarChart3, ownerOnly: true },
   { to: '/settings', label: 'الإعدادات', icon: Settings, ownerOnly: true },
   { to: '/users', label: 'المستخدمون', icon: Users, ownerOnly: true },
+  { to: '/backups', label: 'النسخ الاحتياطي', icon: DatabaseBackup, ownerOnly: true },
+  { to: '/guide', label: 'دليل الاستخدام', icon: BookOpen },
 ];
 
 export function AppShell() {
@@ -144,7 +148,7 @@ export function AppShell() {
               {priceView?.current.ounce ? timeAgo(priceView.current.ounce.at) : 'لم يُدخل بعد'}
             </p>
           </div>
-          <p className="px-1 text-[10px] leading-4 text-muted">الإصدار 0.2.1 · جميع الحقوق محفوظة</p>
+          <p className="px-1 text-[10px] leading-4 text-muted">الإصدار 0.3.0 · جميع الحقوق محفوظة</p>
         </div>
       </aside>
 

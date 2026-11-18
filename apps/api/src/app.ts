@@ -17,6 +17,7 @@ import { inventoryRouter } from './routes/inventory.js';
 import { stocktakesRouter } from './routes/stocktakes.js';
 import { reportsRouter } from './routes/reports.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { backupsRouter } from './routes/backups.js';
 import { ah, ok } from './lib/http.js';
 import { prisma } from './db.js';
 
@@ -65,7 +66,7 @@ export function createApp() {
       const authed = Boolean(req.user);
       return ok(res, {
         initialized: Boolean(setting) && users > 0,
-        version: '0.2.1',
+        version: '0.3.0',
         ...(authed
           ? { shopName: setting?.shopName ?? null, currency: setting?.currency ?? 'LYD' }
           : {}),
@@ -84,6 +85,7 @@ export function createApp() {
   app.use('/api/stocktakes', requireAuth, stocktakesRouter);
   app.use('/api/reports', requireAuth, requireRole('OWNER'), reportsRouter);
   app.use('/api/dashboard', requireAuth, dashboardRouter);
+  app.use('/api/backups', requireAuth, requireRole('OWNER'), backupsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

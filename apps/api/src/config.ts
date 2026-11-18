@@ -24,6 +24,15 @@ const schema = z.object({
   FX_API_KEY: z.string().optional(),
 
   LOCAL_CURRENCY: z.string().default('LYD'),
+
+  /** مجلد النسخ الاحتياطية (افتراضياً backups/ في جذر المشروع) */
+  BACKUP_DIR: z.string().optional(),
+  /** مجلد إضافي تُنسخ إليه كل نسخة (قرص خارجي / مجلد سحابي) — اختياري */
+  BACKUP_COPY_DIR: z.string().optional(),
+  /** مسار mysqldump إن لم يُعثر عليه تلقائياً */
+  BACKUP_MYSQLDUMP_PATH: z.string().optional(),
+  /** off = تعطيل المجدول من البيئة (النسخ اليدوي يبقى متاحاً) */
+  BACKUP_SCHEDULER: z.enum(['on', 'off']).default('on'),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -122,3 +122,20 @@ export const COMPONENT_KIND_LABEL: Record<string, string> = {
   PENDANT: 'تعليقة',
   OTHER: 'أخرى',
 };
+
+/** حجم ملف مقروء: 28 ك.ب / 3.4 م.ب */
+export function fmtBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) return '—';
+  if (bytes < 1024) return `${bytes} بايت`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} ك.ب`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} م.ب`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} ج.ب`;
+}
+
+/** «كل 24 ساعة» / «كل يوم» / «كل أسبوع» */
+export function fmtInterval(hours: number): string {
+  if (hours === 24) return 'كل يوم';
+  if (hours === 48) return 'كل يومين';
+  if (hours === 168) return 'كل أسبوع';
+  return `كل ${hours} ساعات`;
+}

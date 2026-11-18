@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { RAW_GOLD_PRICE_NOTE } from '../lib/copy';
+import { BackupStatusCard } from '../components/BackupStatusCard';
 import { useAuth } from '../lib/auth';
 import type { DashboardData } from '../lib/types';
 import { fmtMoney, fmtNum, fmtWeight, timeAgo } from '../lib/format';
@@ -317,6 +318,8 @@ export default function Dashboard() {
               </p>
             )}
           </Card>
+
+          {isOwner && data?.backup ? <BackupStatusCard summary={data.backup} /> : null}
 
           {isOwner ? (
             <Card className="bg-gradient-to-br from-[var(--gold)]/10 to-transparent">

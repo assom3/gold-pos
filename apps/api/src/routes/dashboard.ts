@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { ah, ok } from '../lib/http.js';
 import { getCurrentPrices } from '../lib/prices.js';
 import { buildPriceTable } from '@gold/pricing';
+import { getBackupSummary } from '../lib/backup.js';
 
 export const dashboardRouter = Router();
 
@@ -23,6 +24,7 @@ dashboardRouter.get(
       recentSales,
       karats,
       lastStocktake,
+      backup,
     ] = await Promise.all([
       getCurrentPrices(),
       prisma.setting.findUnique({ where: { id: 1 } }),
@@ -53,6 +55,8 @@ dashboardRouter.get(
       }),
       prisma.lookup.findMany({ where: { kind: 'KARAT', active: true }, orderBy: { sortOrder: 'asc' } }),
       prisma.stocktake.findFirst({ orderBy: { openedAt: 'desc' } }),
+      // حالة النسخ الاحتياطي للمالك فقط
+      req.user?.role === 'OWNER' ? getBackupSummary() : Promise.resolve(null),
     ]);
 
     const karatList = karats.map((k) => Number(k.value)).filter((k) => Number.isFinite(k) && k > 0);
@@ -84,6 +88,7 @@ dashboardRouter.get(
       },
       recentSales,
       lastStocktake,
+      backup,
       user: req.user,
     });
   }),

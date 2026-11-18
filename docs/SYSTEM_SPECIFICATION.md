@@ -1,6 +1,6 @@
-# المواصفات الكاملة لنظام «ذهب» — الإصدار 0.2.1
+# المواصفات الكاملة لنظام «ذهب» — الإصدار 0.3.0
 
-> المرجع التقني المعتمد لإعادة بناء النظام من الصفر. كل ما في هذا المستند مطابق للكود الموجود في المستودع وقت الإصدار `0.2.1`، ويتضمن ميزات `0.2.0` المفصّلة في [CHANGELOG.md](CHANGELOG.md): المخطط، المسارات، الأنواع، الخوارزميات، الشاشات، والاختبارات.
+> المرجع التقني المعتمد لإعادة بناء النظام من الصفر. كل ما في هذا المستند مطابق للكود الموجود في المستودع وقت الإصدار `0.3.0`، ويتضمن ميزات `0.2.0` و`0.2.1` المفصّلة في [CHANGELOG.md](CHANGELOG.md): المخطط، المسارات، الأنواع، الخوارزميات، الشاشات، والاختبارات.
 > إن اختلف نص هنا عن نص قديم في ملف آخر، فالمصدر هو الكود ثم هذا المستند.
 
 ---
@@ -143,12 +143,12 @@ Gold/
 
 | الحزمة | الإصدار | المسؤولية | لا تفعل |
 |---|---|---|---|
-| الجذر `gold-pos` | 0.2.1 | workspaces وسكربتات التطوير/البناء/الاختبار | لا يحتوي منطق أعمال |
-| `@gold/pricing` | 0.2.1 | الأوزان، سعر الغرام، الربح، التقريب، التحقق من المدخلات | لا يعرف HTTP ولا قاعدة البيانات |
-| `@gold/api` | 0.2.1 | REST، مصادقة، صلاحيات، Zod، تدقيق، معاملات Prisma | لا يعيد اختراع معادلة التسعير |
-| `@gold/web` | 0.2.1 | React + TanStack Query + RTL + معاينات محلية | لا تعتمد على حساب مالي إنتاجي خارج المحرك |
+| الجذر `gold-pos` | 0.3.0 | workspaces وسكربتات التطوير/البناء/الاختبار | لا يحتوي منطق أعمال |
+| `@gold/pricing` | 0.3.0 | الأوزان، سعر الغرام، الربح، التقريب، التحقق من المدخلات | لا يعرف HTTP ولا قاعدة البيانات |
+| `@gold/api` | 0.3.0 | REST، مصادقة، صلاحيات، Zod، تدقيق، معاملات Prisma | لا يعيد اختراع معادلة التسعير |
+| `@gold/web` | 0.3.0 | React + TanStack Query + RTL + معاينات محلية | لا تعتمد على حساب مالي إنتاجي خارج المحرك |
 
-الأرقام في `package.json` للحزم الأربع `0.2.1`، وتذييل الواجهة يعرض `الإصدار 0.2.1`، و`GET /api/bootstrap` يُعيد `version: '0.2.1'` من `app.ts`. هذه القيم الثلاث متطابقة حالياً، وأي رفع إصدار لاحق يجب أن يحدّثها معاً.
+الأرقام في `package.json` للحزم الأربع `0.3.0`، وتذييل الواجهة يعرض `الإصدار 0.3.0`، و`GET /api/bootstrap` يُعيد `version: '0.3.0'` من `app.ts`. هذه القيم الثلاث متطابقة حالياً، وأي رفع إصدار لاحق يجب أن يحدّثها معاً.
 
 ### 2.4 التقنيات
 
@@ -180,7 +180,11 @@ Gold/
 | `FX_PROVIDER` | `manual` | `manual \| api` | محجوز لمزوّد صرف لاحق |
 | `FX_API_URL` | فارغ | اختياري | محجوز |
 | `FX_API_KEY` | فارغ | اختياري | محجوز |
-| `LOCAL_CURRENCY` | `LYD` | نص | عملة المحل التي تُوحَّد إليها التكاليف |
+| `LOCAL_CURRENCY` | `LYD` | نص | عملة افتراضية للبيئة (الإعداد الفعلي لعملة المحل هو `Setting.currency`، وعليه تُحسب تكاليف الشراء) |
+| `BACKUP_DIR` | `backups/` في جذر المشروع | مسار | مجلد حفظ ملفات النسخ الاحتياطي |
+| `BACKUP_COPY_DIR` | غير مهيأ | مسار اختياري | مجلد إضافي (قرص خارجي/مزامنة سحابية) تُنسخ إليه كل نسخة ناجحة |
+| `BACKUP_MYSQLDUMP_PATH` | اكتشاف تلقائي | مسار اختياري | مسار `mysqldump` إن لم يُعثر عليه تلقائياً (MySQL المحمول ثم `PATH`) |
+| `BACKUP_SCHEDULER` | `on` | `on \| off` | `off` يعطّل المجدول من البيئة (النسخ اليدوي يبقى متاحاً)؛ يُستعمل لتشغيل نسخة اختبار ثانية على نفس القاعدة |
 | `SEED_OWNER_PASSWORD` | غير مهيأ (تطوير: `Admin@2026`) | اختياري في التطوير، إلزامي في الإنتاج | كلمة مرور `admin` عند `db:seed`. |
 | `SEED_SELLER_PASSWORD` | غير مهيأ (تطوير: `Seller@2026`) | اختياري في التطوير، إلزامي في الإنتاج | كلمة مرور `seller` عند `db:seed`. |
 
@@ -199,7 +203,9 @@ Gold/
 | `npm.cmd run test:integration` | فحص تكاملي شامل على خادم وMySQL حيّين |
 | `npm.cmd run test:stress` | فحص حِمل وتزامن على المسارات الحساسة |
 | `npm.cmd run db:cleanup-qa` | حذف بيانات الاختبار التي تحمل بادئة `QA-` |
-| `npm.cmd run db:backup` | نسخة احتياطية SQL مؤقتة في `backups/` باسم بتاريخ الوقت |
+| `npm.cmd run db:backup` | نسخة احتياطية SQL مؤقتة في `backups/` باسم بتاريخ الوقت (سطر أوامر، خارج نظام الجدولة) |
+| `npm.cmd run db:restore -- <ملف> --yes` | استعادة قاعدة البيانات من `.sql` أو `.sql.gz` بعد إنشاء نسخة أمان `pre-restore-*` تلقائياً |
+| `npm.cmd run test:backup` | فحص نظام النسخ الاحتياطي على خادم حي (16 فحصاً) |
 | `npm.cmd run docs:pdf` | تحديث `docs/USER_MANUAL.pdf` من دليل Markdown عند الحاجة |
 | `npm.cmd run docs:pdf:spec` | تحديث `docs/SYSTEM_SPECIFICATION.pdf` من هذا المستند |
 | `npm.cmd run db:generate` | توليد Prisma Client |
@@ -393,10 +399,10 @@ Gold/
 | `stocktakeId` | `Int` | FK مع `onDelete: Cascade` |
 | `itemId` | `Int?` | FK (`SetNull`)؛ لقطة الرابط |
 | `itemCode` | `String(40)` | لقطة الكود وقت الفتح |
-| `expectedWeight` | `Decimal(10,3)` | من الصنف وقت الفتح |
+| `expectedWeight` | `Decimal(10,3)` | `totalWeight × quantity` وقت الفتح |
 | `countedWeight` | `Decimal(10,3)?` | يُدخله المالك أو البائع |
 | `weightDiff` | `Decimal(10,3)?` | `counted − expected`، يحسبه الخادم |
-| `valueAtOpen` | `Decimal(14,2)` | قيمة اللحظة وقت الفتح |
+| `valueAtOpen` | `Decimal(14,2)` | قيمة اللحظة × الكمية وقت الفتح |
 | `present` | `Boolean` | default `true` |
 
 فهرس: `[stocktakeId]`.
@@ -476,6 +482,35 @@ Gold/
 
 > الـseed idempotent: يستخدم `upsert` ولا يغيّر قيماً موجودة. غيّر كلمتي المرور فور أول دخول. في `NODE_ENV=production` يرفض `db:seed` العمل إذا لم تُضبط `SEED_OWNER_PASSWORD` و`SEED_SELLER_PASSWORD` (رسالة عربية صريحة)؛ الافتراضيات `Admin@2026`/`Seller@2026` للتطوير فقط. المتغيران يُقرآن عند إنشاء الصف فقط، و`upsert` لا يُدير كلمة مرور موجودة — استخدم `POST /api/users/:id/password` لتغييرها.
 
+### 3.12 `BackupSetting` و`BackupRun` (جديد في 0.3.0)
+
+تعدادات: `BackupStatus` = `RUNNING | OK | FAILED`، `BackupTrigger` = `MANUAL | SCHEDULED`.
+
+**`BackupSetting`** — صف واحد (`id = 1`) يُنشأ عند أول قراءة عبر `upsert` (لا يحتاج seed):
+
+| الحقل | النوع | الافتراضي | ملاحظات |
+|---|---|---|---|
+| `enabled` | `Boolean` | `true` | تفعيل الجدولة التلقائية |
+| `intervalHours` | `Int` | `24` | `6 \| 12 \| 24 \| 48 \| 168` |
+| `timeOfDay` | `String(5)` | `02:00` | `HH:MM` بتوقيت الخادم؛ يُستعمل عند الفاصل 24 ساعة فأكثر |
+| `retentionCount` | `Int` | `14` | عدد النسخ الناجحة المحتفظ بها (3–90) |
+| `updatedAt` | `DateTime` | تلقائي | |
+
+**`BackupRun`** — سجل كل محاولة:
+
+| الحقل | النوع | ملاحظات |
+|---|---|---|
+| `id` | `Int @id` | |
+| `trigger` | `BackupTrigger` | يدوية أو مجدولة |
+| `status` | `BackupStatus` | `RUNNING` ثم `OK` أو `FAILED` |
+| `startedAt` / `finishedAt` | `DateTime` / `DateTime?` | |
+| `fileName` | `String(120)?` | `gold_pos-YYYYMMDD-HHMMSS.sql.gz` |
+| `sizeBytes` | `BigInt?` | يُحوَّل إلى رقم في الاستجابة |
+| `error` | `Text?` | سبب الفشل، أو تحذير عند فشل النسخ للمجلد الإضافي رغم نجاح النسخة |
+| `userId` | `Int?` | منفّذ النسخة اليدوية؛ `null` للمجدولة (`onDelete: SetNull`) |
+
+فهارس: `startedAt`, `status`.
+
 ---
 
 ## 4. مرجع API الكامل
@@ -512,7 +547,8 @@ Gold/
 | `PATCH /api/stocktakes/:id/lines/:lineId` | ❌ | ✅ | ✅ |
 | `POST /api/lookups` | ❌ | أي نوع | `SUPPLIER`/`MANUFACTURER` فقط |
 | `PATCH/DELETE /api/lookups/:id` | ❌ | ✅ | ❌ |
-| `GET /api/dashboard` | ❌ | ✅ | ✅ |
+| `GET /api/dashboard` | ❌ | ✅ (مع حقل `backup`) | ✅ (`backup: null`) |
+| `/api/backups/*` | ❌ | ✅ | ❌ |
 
 ### 4.3 `auth` — المصادقة
 
@@ -554,7 +590,7 @@ Gold/
 | `GET` | `/api/settings` | أي مستخدم | — | كائن `Setting` + `weightBasis` مشتق، أو `null` |
 | `PATCH` | `/api/settings` | OWNER | أي حقل من حقول `Setting` عدا `id/updatedAt` | الكائن المحدَّث |
 
-تحقق: `currency` حروف لاتينية 2–8 ثم تُحوَّل لكبير؛ `profitValue` 0–100000؛ `roundingStep` ∈ {0,5,10}؛ `priceStaleHours` 1–168؛ `defaultKarat` 1–24؛ `fixedBasis` ∈ {`GRAM`,`PIECE`}. عند تغيير `deductStone`/`deductInlays` يُعاد اشتقاق `weightBasis`.
+تحقق: `currency` 3 حروف لاتينية بالضبط ثم تُحوَّل لكبير؛ `profitValue` 0–100000؛ `roundingStep` ∈ {0,5,10}؛ `priceStaleHours` 1–168؛ `defaultKarat` 1–24؛ `fixedBasis` ∈ {`GRAM`,`PIECE`}. عند تغيير `deductStone`/`deductInlays` يُعاد اشتقاق `weightBasis`.
 
 ### 4.7 `prices` — الأسعار
 
@@ -663,9 +699,27 @@ Gold/
 
 | الطريقة | المسار | الوصول | الاستجابة |
 |---|---|---|---|
-| `GET` | `/api/dashboard` | أي مستخدم | `{ shopName, currency, prices, table, today, month, inventory, recentSales, lastStocktake, user }` |
+| `GET` | `/api/dashboard` | أي مستخدم | `{ shopName, currency, prices, table, today, month, inventory, recentSales, lastStocktake, backup, user }` — `backup` ملخص النسخ الاحتياطي للمالك، و`null` للبائع |
 | `GET` | `/api/health` | عام | `{ data: { ok: true, time } }` |
-| `GET` | `/api/bootstrap` | عام | `{ initialized, version: '0.2.1', ...(shopName,currency للمسجّل فقط) }` |
+| `GET` | `/api/bootstrap` | عام | `{ initialized, version: '0.3.0', ...(shopName,currency للمسجّل فقط) }` |
+
+### 4.14 `backups` — النسخ الاحتياطي (OWNER فقط، جديد في 0.3.0)
+
+كل المسارات تحت `requireAuth` و`requireRole('OWNER')`.
+
+| الطريقة | المسار | الجسم | الاستجابة |
+|---|---|---|---|
+| `GET` | `/api/backups` | — | `{ settings, summary, storage, runs }` (آخر 100 محاولة) |
+| `PATCH` | `/api/backups/settings` | `{ enabled?, intervalHours?, timeOfDay?, retentionCount? }` | نفس شكل `GET` بعد الحفظ |
+| `POST` | `/api/backups/run` | — | `201` بنفس شكل `GET` بعد انتهاء النسخة (متزامن)؛ `400` برسالة السبب إن فشلت؛ `409` إن كانت نسخة قيد التنفيذ |
+| `GET` | `/api/backups/:id/download` | — | ملف `.sql.gz` (`Content-Disposition: attachment`)؛ `404` إن لم يوجد الملف |
+| `DELETE` | `/api/backups/:id` | — | يحذف الملف (والمجلد الإضافي) والسجل ثم يُرجع النظرة العامة؛ `409` إن كانت قيد التنفيذ |
+
+- **`settings`**: `{ enabled, intervalHours, timeOfDay, retentionCount }`. التحقق: `intervalHours ∈ {6,12,24,48,168}`، `timeOfDay` بصيغة `HH:MM` (24 ساعة)، `retentionCount` عدد صحيح 3–90 (وإلا `422`).
+- **`summary`**: `{ health: ok|warning|none|off, enabled, schedulerActive, running, intervalHours, lastOkAt, lastOkSizeBytes, lastFailedAt, nextRunAt }`. `lastFailedAt` لا يظهر إلا إذا فشلت محاولة بعد آخر نجاح.
+- **`storage`**: `{ dir, copyDir, mysqldump, totalSizeBytes, count }`؛ العدّ والحجم للنسخ التي ما زال ملفها موجوداً فقط.
+- **`runs[]`**: `{ id, trigger, status, startedAt, finishedAt, fileName, sizeBytes, error, fileExists }`.
+- اسم الملف في التنزيل/الحذف يُتحقَّق من صيغته `gold_pos-YYYYMMDD-HHMMSS.sql.gz` (منع الخروج من المجلد)، ويأتي من السجل لا من المستخدم.
 
 ---
 
@@ -1002,7 +1056,7 @@ weightDiffs = lines حيث present = true و weightDiff ≠ 0
 notRegistered = أصناف AVAILABLE غير موجودة في لقطة الجرد
 ```
 
-المجموعات الثلاث منفصلة بلا تكرار. `PATCH` لسطر مغلق مرفوض (BR-14). الإغلاق تحديث شرطي `{ id, status: OPEN }` يمنع الإغلاق المزدوج.
+المجموعات الثلاث منفصلة بلا تكرار. `PATCH` لسطر مغلق مرفوض (BR-14). الإغلاق تحديث شرطي `{ id, status: OPEN }` يمنع الإغلاق المزدوج. تعديل سطر يقفل صف الجرد (`SELECT … FOR UPDATE`) ويعيد فحص حالته داخل المعاملة، فلا يمكن تعديل سطر أثناء إغلاق متزامن. `GET /stocktakes/:id/differences` يُعيد `404` لجرد غير موجود.
 
 ### 5.13 تحديث السعر التلقائي
 
@@ -1016,6 +1070,32 @@ notRegistered = أصناف AVAILABLE غير موجودة في لقطة الجر�
 ### 5.14 قدم السعر
 
 `ageHours = max(عمر آخر أونصة، عمر آخر صرف)`؛ `stale = ageHours > priceStaleHours`. يُعرض تنبيه في الرئيسية والشاشات ذات الصلة. `ready = وجود آخر سعرين`.
+
+### 5.15 النسخ الاحتياطي والجدولة (جديد في 0.3.0)
+
+**التنفيذ (`lib/backup.ts → runBackup`):**
+
+1. علم `running` في الذاكرة يُرفع **قبل أي `await`** (يمنع تجاوز طلبين متزامنين)، ثم فحص وجود `BackupRun` بحالة `RUNNING` أحدث من 15 دقيقة (حماية من خادمين على نفس القاعدة). عند التعارض ⇒ `409`.
+2. إنشاء سجل `RUNNING`، ثم `mysqldump` بالخيارات `--single-transaction --no-tablespaces --routines --triggers --default-character-set=utf8mb4` عبر TCP، وكلمة المرور في `MYSQL_PWD` (لا تظهر في سطر الأوامر). المخرجات تمر عبر `gzip` إلى `<الاسم>.partial`. مهلة 10 دقائق.
+3. **تحقق السلامة:** فك الضغط كاملاً، والتأكد أن الملف غير فارغ ويبدأ بـ`MySQL dump`/`CREATE TABLE` وينتهي بسطر `Dump completed`. عند الفشل يُحذف `.partial` ويُسجَّل `FAILED`.
+4. `rename` إلى `gold_pos-YYYYMMDD-HHMMSS.sql.gz`، ثم النسخ إلى `BACKUP_COPY_DIR` إن وُجد (فشله تحذير في `error` لا يُفشل النسخة).
+5. تحديث السجل `OK` + تدقيق `BACKUP_MANUAL`/`BACKUP_SCHEDULED`، ثم **الاحتفاظ**: يُحذف (ملفاً وسجلاً) ما زاد عن `retentionCount` من النسخ الناجحة الأقدم، ويُحتفظ بآخر 30 سجل فشل فقط.
+
+**موعد النسخة التالية `computeNextRun` (دالة صافية):**
+
+```
+غير مفعّل                       ⇒ null
+لا نسخة ناجحة سابقة (بملف موجود) ⇒ الآن
+intervalHours < 24              ⇒ آخر نجاح + intervalHours
+intervalHours ≥ 24              ⇒ (يوم آخر نجاح عند timeOfDay) + intervalHours/24 يوماً
+بعد فشل أحدث من آخر نجاح        ⇒ max(الموعد، وقت الفشل + 30 دقيقة)
+```
+
+**المجدول:** يبدأ مع الخادم (`startBackupScheduler`)؛ يعلّم أي `RUNNING` أقدم من 15 دقيقة كـ`FAILED` (انقطاع)، ثم يفحص كل 60 ثانية (وأول فحص بعد 15 ثانية من الإقلاع) فينفّذ نسخة `SCHEDULED` إذا حلّ الموعد. توقف الخادم لا يفوّت النسخة: تُنفَّذ فور تشغيله. `BACKUP_SCHEDULER=off` يعطّله. «آخر نسخة ناجحة» تعني نسخة ما زال ملفها على القرص.
+
+**الصحة `summary.health`:** `none` لا نسخة صالحة؛ `warning` آخر نسخة أقدم من `max(36 ساعة، 2 × الفاصل)` أو فشلت محاولة بعدها؛ `off` الجدولة معطّلة (من الإعدادات أو البيئة)؛ وإلا `ok`.
+
+**الاستعادة (`tools/restore-db.mjs`):** تتطلب `--yes`؛ تُنشئ `backups/pre-restore-*.sql.gz` أولاً (وتتوقف دون تغيير إن فشلت)، ثم تمرر الملف (مع `gunzip` للـ`.gz`) إلى `mysql`. الاستعادة تُنفَّذ من سطر الأوامر عمداً ولا توجد في الواجهة لخطورتها.
 
 ---
 
@@ -1077,6 +1157,8 @@ notRegistered = أصناف AVAILABLE غير موجودة في لقطة الجر�
 | `/reports` | التقارير | OWNER |
 | `/settings` | الإعدادات والقوائم | OWNER |
 | `/users` | المستخدمون | OWNER |
+| `/backups` | النسخ الاحتياطي | OWNER |
+| `/guide` | دليل الاستخدام (يُخفي أقسام المالك عن البائع) | مسجّل |
 
 `Protected` يمنع غير المسجل ويحفظ مسار العودة؛ `OwnerOnly` يعرض شاشة «هذه الصفحة للمالك فقط». أي مسار آخر ⇒ شاشة «الصفحة غير موجودة».
 
@@ -1269,10 +1351,13 @@ npm.cmd run test:stress       # فحص حِمل وتزامن على المسار
 6. حدود معدل الطلبات في الذاكرة؛ تُصفَّر عند إعادة تشغيل الخادم ولا تصلح لتعدد النسخ.
 7. المجدول داخل عملية الـAPI؛ تشغيل أكثر من نسخة يؤدي إلى جلب مزدوج ما لم يُدار خارجياً.
 8. لا يوجد مجلد `migrations` بعد: المسار المعتمد هو `db push`، وسكربت `db:migrate` متاح لإنشاء أول ترحيل عند الحاجة؛ `db:reset` مدمّر للبيانات.
-9. `GET /api/bootstrap` يُعيد `version: '0.2.1'` ثابتاً في `app.ts`، ويجب تحديثه يدوياً مع رقم الحزم وتذييل الواجهة عند كل رفع إصدار.
+9. `GET /api/bootstrap` يُعيد `version: '0.3.0'` ثابتاً في `app.ts`، ويجب تحديثه يدوياً مع رقم الحزم وتذييل الواجهة عند كل رفع إصدار.
 10. أرقام التكلفة/الربح في شاشة البيع مشتقة من `purchaseCostDinar` المحفوظ للصنف، وليست تكلفة استبدال لحظية.
 11. سكربتا `test:integration` و`test:stress` يحتاجان خادماً حياً وقاعدة بيانات؛ لا يعملان في CI معزول بلا تهيئة.
 12. لا إشعارات خارج التطبيق (بريد/رسائل).
+13. مجدول النسخ الاحتياطي داخل عملية الـAPI: لا نسخ تلقائي والخادم متوقف (تُنفَّذ المتأخرة عند التشغيل). تشغيل أكثر من نسخة من الخادم على نفس القاعدة محمي بفحص `RUNNING` الحديث لكنه غير مُوصى به.
+14. الاستعادة من سطر الأوامر فقط (`db:restore`) وليست من الواجهة؛ والنسخ الاحتياطية على نفس جهاز قاعدة البيانات ما لم يُضبط `BACKUP_COPY_DIR`.
+15. تعديل كمية صنف من نموذج التعديل يُكتب كما هو؛ إن بيعت وحدات بعد فتح النموذج تُستبدل الكمية الحالية بالمُرسلة.
 
 ---
 
@@ -1345,7 +1430,7 @@ Gold/
 |---|---|---|
 | root dev: concurrently | `^10.0.7` | `package.json` |
 | root dev: typescript | `^7.0.2` | `package.json` |
-| api: @gold/pricing | `^0.2.1` | `apps/api/package.json` |
+| api: @gold/pricing | `^0.3.0` | `apps/api/package.json` |
 | api: @prisma/client | `^6.19.3` | `apps/api/package.json` |
 | api: bcryptjs | `^3.0.3` | `apps/api/package.json` |
 | api: cookie-parser | `^1.4.7` | `apps/api/package.json` |
@@ -1363,7 +1448,7 @@ Gold/
 | api dev: prisma | `^6.19.3` | `apps/api/package.json` |
 | api dev: tsup | `^9.0.0` | `apps/api/package.json` |
 | api dev: tsx | `^4.23.15` | `apps/api/package.json` |
-| web: @gold/pricing | `^0.2.1` | `apps/web/package.json` |
+| web: @gold/pricing | `^0.3.0` | `apps/web/package.json` |
 | web: @tanstack/react-query | `^5.107.1` | `apps/web/package.json` |
 | web: clsx | `^2.1.1` | `apps/web/package.json` |
 | web: decimal.js | `^10.6.0` | `apps/web/package.json` |
@@ -1461,7 +1546,7 @@ LOCAL_CURRENCY=LYD
 
 - المستودع: فرع `main` واحد + `origin/main`، بلا وسوم (tags) وبلا `.github`/CI وبلا سكربت إصدار آلي. عند 0.2.1 commitان: `1caba8a release: gold POS v0.2.1` ثم `7d3c407 docs: finalize v0.2.1 system specification and regenerate user manual PDF`.
 - النشر يدوي بالكامل: `npm.cmd install` ⇒ `db:generate` ⇒ `db:push` ⇒ `db:seed` ⇒ `build` ⇒ تشغيل API وخدمة ثابتة للواجهة خلف وكيل.
-- عند رفع الإصدار حدّث **يدوياً** المواقع الستة معاً: `version` في `package.json` الجذر والثلاثة workspaces، `version: '0.2.1'` في `apps/api/src/app.ts`، `الإصدار 0.2.1` في `apps/web/src/layout/AppShell.tsx`، ثم README/CHANGELOG/عناوين المستندات وأعد توليد PDF.
+- عند رفع الإصدار حدّث **يدوياً** المواقع الستة معاً: `version` في `package.json` الجذر والثلاثة workspaces، `version: '0.3.0'` في `apps/api/src/app.ts`، `الإصدار 0.3.0` في `apps/web/src/layout/AppShell.tsx`، ثم README/CHANGELOG/عناوين المستندات وأعد توليد PDF.
 - المتتبَّع في git: الكود والوثائق و`USER_MANUAL.pdf` و`.env.example`. المستبعد: `node_modules/`, `dist/`, `.env`/`.env.*`, `tools/mysql/`, `tools/download/`, `*.log`, `coverage/`, `.vite/`.
 
 ---
@@ -1504,7 +1589,7 @@ const itemSchema = z.object({
   confirmSameWeight: z.boolean().optional(),
   purchaseGramPrice: z.number().min(0).nullable().optional(),
   purchasePrice: z.number().min(0).optional().default(0),
-  purchaseCurrency: z.string().trim().min(1).max(3).default('USD'),
+  purchaseCurrency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'رمز عملة الشراء يجب أن يكون 3 حروف لاتينية').default('USD'),
   purchaseFxRate: z.number().positive('سعر الصرف يجب أن يكون أكبر من صفر').optional(),
   purchaseStatus: z.enum(['NEW','USED','SCRAP']).default('NEW'),
   weightBasis: z.enum(['NET_GOLD','TOTAL','MINUS_STONE','MINUS_INLAYS']).nullable().optional(),
@@ -1547,7 +1632,7 @@ const cancelSchema = z.object({
 const schema = z.object({
   shopName: z.string().trim().min(1).max(160).optional(),
   currency: z.string().trim().min(2).max(8)
-    .regex(/^[a-zA-Z]{2,8}$/,'رمز العملة يجب أن يكون حروفاً لاتينية')
+    .regex(/^[a-zA-Z]{3}$/,'رمز العملة يجب أن يكون 3 حروف لاتينية (مثل LYD)')
     .transform(v => v.toUpperCase()).optional(),
   codeMode: z.enum(['AUTO','MANUAL']).optional(),
   deductStone: z.boolean().optional(), deductInlays: z.boolean().optional(),
@@ -1582,7 +1667,7 @@ const stocktakeLineSchema = z.object({
 ### 14.2 قواعد الأصناف الدقيقة
 
 - `resolveTotals`: للطقم يلزم مكوّن واحد على الأقل؛ تُجمع الأوزان بـ`aggregateComponents` وتُقرَّب 3 خانات، ويُرفض `netGoldWeight ≤ 0`. للقطعة يُستدعى `computeWeights` بأساس `NET_GOLD` دائماً لحساب `netGoldWeight` المخزَّن.
-- `resolvePurchase`: العملة تُحوَّل لكبير؛ إن كانت مساوية `LOCAL_CURRENCY` ⇒ `purchaseFxRate=1`. إن كانت أجنبية يلزم `purchaseFxRate > 0` وإلا `400`. إن وُجد `purchaseGramPrice` ⇒ `purchasePrice = round2(gramPrice × netGoldWeight)` و`purchaseCostDinar = round2(purchasePrice × rate)`. إن غاب ⇒ `purchasePrice = round2(المرسل)` و`purchaseGramPrice = round4(purchasePrice ÷ netGoldWeight)` إن أمكن، و`purchaseCostDinar = purchaseCostDinar(...)`.
+- `resolvePurchase`: العملة تُحوَّل لكبير؛ إن كانت مساوية عملة المحل `Setting.currency` ⇒ `purchaseFxRate=1`. إن كانت أجنبية يلزم `purchaseFxRate > 0` وإلا `400`. إن وُجد `purchaseGramPrice` ⇒ `purchasePrice = round2(gramPrice × netGoldWeight)` و`purchaseCostDinar = round2(purchasePrice × rate)`. إن غاب ⇒ `purchasePrice = round2(المرسل)` و`purchaseGramPrice = round4(purchasePrice ÷ netGoldWeight)` إن أمكن، و`purchaseCostDinar = purchaseCostDinar(...)`.
 - الكود: في `AUTO` يتجاهل الخادم أي `code` مرسل ويولّد `P-####` أو `S-####` داخل المعاملة عبر `nextSequence` حتى 100 محاولة، متخطياً أي كود مستعمل؛ في `MANUAL` الكود مطلوب ويُرفض المكرر برسالة عربية مخصصة.
 - `resolveCategoryId` يفرض تصنيف «طقم» النشط للـSET إن وُجد، وإلا يمرّر `categoryId` بعد التحقق من نوعه. `resolveManufacturer` يتحقق من `MANUFACTURER` ويحفظ الاسم في `manufacturer` أيضاً. `resolveLookupId` يتحقق من `CATEGORY`/`SUPPLIER`/`COUNTRY`.
 - البائع: يحتاج `sellerCanAddItems=true`؛ وإن كانت `showCostToSeller=false` يُمنع من إرسال أي `purchaseGramPrice > 0` أو `purchasePrice > 0` برسالة `إدخال بيانات الشراء متاح للمالك فقط`.
@@ -1601,7 +1686,7 @@ const stocktakeLineSchema = z.object({
 ### 14.4 قواعد المخزون والجرد والتقارير
 
 - `GET /inventory/summary`: يعمل على الأصناف `AVAILABLE` فقط؛ `ready` من الأسعار؛ عند عدم الجاهزية كل القيم صفر. `canSeeCost = role OWNER || setting.showCostToSeller`. حقول `cost/margin` تُحذف من `totals` و`byKarat` و`rows` عند المنع. `byKarat` و`rows` مرتبان بالعيار تصاعدياً (والكود داخل العيار). `totals.items` عدد الأصناف و`units` مجموع الكميات.
-- فتح الجرد: يرفض وجود جرد `OPEN`؛ يأخذ لقطة لكل صنف `AVAILABLE` مع `expectedWeight=totalWeight` و`valueAtOpen` من التقييم اللحظي؛ يستهلك `STOCKTAKE_REF` ويسجّله في تدقيق `OPEN_STOCKTAKE` فقط (لا يُخزَّن على صف الجرد). الترتيب `openedAt desc` والحد 100 في القائمة.
+- فتح الجرد: يرفض وجود جرد `OPEN`؛ يأخذ لقطة لكل صنف `AVAILABLE` مع `expectedWeight=round3(totalWeight × quantity)` و`valueAtOpen=round2(قيمة الوحدة × quantity)` من التقييم اللحظي؛ فحص «لا جرد مفتوح» يتم داخل المعاملة بقراءة `SELECT … FOR UPDATE` بعد أخذ عدّاد `STOCKTAKE_REF` (فيتسلسل فتح جردين متزامنين)؛ يستهلك `STOCKTAKE_REF` ويسجّله في تدقيق `OPEN_STOCKTAKE` فقط (لا يُخزَّن على صف الجرد). الترتيب `openedAt desc` والحد 100 في القائمة.
 - تعديل السطر: `countedWeight` إن غاب يُحتفظ بالقيمة السابقة؛ `diff = round3(counted − expected)` ويُحسب دائماً ويُحفظ حتى إن لم يُرسل `countedWeight`. رفض إذا كان الجرد `CLOSED`. تدقيق `UPDATE_STOCKTAKE_LINE` بقبل/بعد كاملين.
 - الإغلاق: تحديث شرطي `{id,status:OPEN}` يمنع الإغلاق المزدوج. `GET /differences` يعيد `missing` (`present=false`) و`weightDiffs` (`present=true` و`weightDiff ≠ 0`) و`notRegistered` (أصناف `AVAILABLE` غير موجودة في لقطة الجرد) و`counts`؛ المجموعات منفصلة.
 - `GET /reports/sales`: فواتير `COMPLETED` فقط؛ فلاتر `from/to/sellerId/paymentMethodId/karat`؛ `karat > 24` يُتجاهل. المخرجات `count,total,average,bySeller,byPayment,byKarat,rows` مع تقريب 2 للأموال و3 للأوزان.
@@ -1644,6 +1729,10 @@ const stocktakeLineSchema = z.object({
 | `CREATE_SALE`, `CANCEL_SALE` | `sale` | نعم | `invoiceNo/total/lines` أو `status/total/reason` |
 | `OPEN_STOCKTAKE`, `CLOSE_STOCKTAKE` | `stocktake` | نعم | `type/ref/lines` أو `status/lines` |
 | `UPDATE_STOCKTAKE_LINE` | `stocktakeLine` | نعم | `countedWeight/present/weightDiff/stocktakeId` |
+| `BACKUP_MANUAL`, `BACKUP_SCHEDULED` | `backup` | لا | `fileName/sizeBytes/warning?` |
+| `BACKUP_FAILED` | `backup` | لا | `error` |
+| `UPDATE_BACKUP_SETTINGS` | `backup` | لا | القيم قبل/بعد |
+| `BACKUP_DOWNLOAD`, `BACKUP_DELETE` | `backup` | لا | `fileName` |
 
 ---
 
@@ -1687,8 +1776,8 @@ const stocktakeLineSchema = z.object({
 
 ### 15.5 الإقلاع والإغلاق
 
-- `index.ts` يستدعي `createApp()`، ويستمع على `config.PORT`، ويبدأ مجدول الأسعار، ويعرض سطر تشغيل. Prisma يسجّل `warn/error` في التطوير و`error` فقط في الإنتاج. `unhandledRejection` يُسجَّل.
-- عند `SIGINT/SIGTERM`: إيقاف المجدول ⇒ إغلاق خادم HTTP ⇒ `$disconnect()` من Prisma ⇒ خروج؛ ومؤقت إجباري 8 ثوانٍ إن تعطّل الإغلاق.
+- `index.ts` يستدعي `createApp()`، ويستمع على `config.PORT`، ويبدأ مجدول الأسعار ومجدول النسخ الاحتياطي (`startBackupScheduler`)، ويعرض سطر تشغيل. Prisma يسجّل `warn/error` في التطوير و`error` فقط في الإنتاج. `unhandledRejection` يُسجَّل.
+- عند `SIGINT/SIGTERM`: إيقاف المجدولين ⇒ إغلاق خادم HTTP ⇒ `$disconnect()` من Prisma ⇒ خروج؛ ومؤقت إجباري 8 ثوانٍ إن تعطّل الإغلاق.
 
 ---
 
@@ -1767,7 +1856,7 @@ const stocktakeLineSchema = z.object({
 
 المسارات كما في 7.1. `Protected` يعرض `Splash` أثناء التحميل، ويحوّل إلى `/login` مع `state.from`؛ `OwnerOnly` يعرض «هذه الصفحة للمالك فقط» ووصفها وزر «رجوع»؛ المسار غير المعروف يعرض «الصفحة غير موجودة» وزر «العودة للرئيسية». `/login` إذا كان المستخدم مسجلاً ⇒ تحويل إلى `/`.
 
-**AppShell:** سايدبار ثابت بعرض 268px (`lg:translate-x-0`) يتحول إلى درج منزلق على الشاشات الصغيرة مع طبقة تعتيم `z-40`؛ ترويسة شعار `Au` بتدرّج `#e8cf8a → #c9a227 → #8a6e14` واسم المحل من `settings.shopName` (الافتراضي «محل الذهب») والسطر «نظام تسعير ومخزون الذهب». ترتيب التنقل: الرئيسية، أسعار الذهب، الذهب، المبيعات، المخزون والتقييم، الجرد، التقارير، الإعدادات، المستخدمون (آخر ثلاثة للمالك فقط). أسفل السايدبار: «آخر تحديث للسعر» بـ`timeAgo` أو «لم يُدخل بعد»، ثم «الإصدار 0.2.1 · جميع الحقوق محفوظة».
+**AppShell:** سايدبار ثابت بعرض 268px (`lg:translate-x-0`) يتحول إلى درج منزلق على الشاشات الصغيرة مع طبقة تعتيم `z-40`؛ ترويسة شعار `Au` بتدرّج `#e8cf8a → #c9a227 → #8a6e14` واسم المحل من `settings.shopName` (الافتراضي «محل الذهب») والسطر «نظام تسعير ومخزون الذهب». ترتيب التنقل: الرئيسية، أسعار الذهب، الذهب، المبيعات، المخزون والتقييم، الجرد، التقارير، الإعدادات، المستخدمون، النسخ الاحتياطي (للمالك فقط)، ثم دليل الاستخدام (للجميع). أسفل السايدبار: «آخر تحديث للسعر» بـ`timeAgo` أو «لم يُدخل بعد»، ثم «الإصدار 0.3.0 · جميع الحقوق محفوظة».
 
 الهيدر لاصق (`sticky top-0`, `bg-bg/85`, `backdrop-blur-md`) يحوي زر القائمة على الجوال، مؤشر «السوق الآن» النابض على الشاشات المتوسطة، شريط «أونصة / صرف / غرام 21» (الأونصة بصيغة `$...`، والصرف برقم، وغرام 21 بتمييز ذهبي؛ `title` شريحتي الأونصة وغرام 21 يحمل `RAW_GOLD_PRICE_NOTE` دون ظهور بصري)، شارة «السعر متقادم» إن لزم، زر تبديل الثيم (شمس/قمر)، وقائمة المستخدم. القائمة تعرض الاسم والمعرّف `@username` وعنصرَي «تغيير كلمة المرور» و«تسجيل الخروج». نافذة تغيير كلمة المرور: الحقول «كلمة المرور الحالية / الجديدة / التأكيد»، تحقق محلي (≥8 وتطابق)، رسائل «كلمتا المرور غير متطابقتين» و«سيتم إنهاء الجلسات الأخرى تلقائياً بعد التغيير»، واستدعاء `POST /auth/change-password`. المحتوى في `<main>` بعرض أقصى 1400px وهامش `px-3 sm:px-5 lg:px-7`.
 
@@ -1820,6 +1909,14 @@ const stocktakeLineSchema = z.object({
 #### 16.4.11 المستخدمون (`pages/Users.tsx`)
 بطاقات «إجمالي المستخدمين / المالك / البائعون / حسابات معطّلة» وجدول «حسابات النظام» (الاسم، اسم الدخول، الدور، الحالة، شارة «أنت»، إجراءات تعديل/كلمة مرور/تفعيل). نوافذ: «مستخدم جديد» و«تعديل البيانات» و«تغيير كلمة المرور»؛ الحقول الاسم الكامل، اسم الدخول، الدور، كلمة المرور/Tأكيد، ومفتاح «الحساب نشط ويمكنه تسجيل الدخول مباشرة». التحقق: اسم الدخول `[A-Za-z0-9._-]+` بطول ≥3، الاسم ≥2، وكلمة المرور ≥8؛ منع تعديل دور النفس أو تعطيلها.
 
+#### 16.4.12 النسخ الاحتياطي (`pages/Backups.tsx`, `components/BackupStatusCard.tsx`, `lib/backup.ts`)
+صفحة `/backups` للمالك: زر «نسخ احتياطي الآن» (`useRunBackup`)، شريط تحذير عند `health = none|warning` (مع سبب آخر فشل)، وتنبيه إن لم يوجد `mysqldump`. أربع بطاقات: «آخر نسخة ناجحة»، «النسخة التالية»، «النسخ المحفوظة» (العدد والحجم)، «الجدولة». بطاقة «الجدولة التلقائية»: مفتاح التفعيل، «تكرار النسخ» (6/12 ساعة، يوم، يومين، أسبوع)، «وقت النسخ اليومي» (معطّل مع الفواصل القصيرة)، «عدد النسخ المحفوظة» (3–90)، وزر «حفظ» لا يُفعَّل إلا مع تغيير صحيح. بطاقة «مكان الحفظ» تعرض المجلد المحلي والمجلد الإضافي (أو شرح ضبط `BACKUP_COPY_DIR`). جدول «سجل النسخ» (10 صفوف/صفحة): التاريخ، النوع، الحالة (مع «الملف غير موجود»)، الحجم، الملف/سبب الفشل، وأزرار تنزيل (عبر `fetch` ثم `Blob` للتحقق من الخطأ قبل الحفظ) وحذف بتأكيد. قسم قابل للطي «كيف أستعيد نسخة احتياطية؟». تتحدث الصفحة كل 3 ثوانٍ أثناء نسخة جارية وإلا كل دقيقة.
+
+بطاقة «النسخ الاحتياطي» في الرئيسية (للمالك فقط، من `dashboard.backup`): شارة الصحة، آخر نسخة وحجمها، الموعد التالي، تحذير الفشل، زر «نسخ احتياطي الآن» ورابط «إدارة النسخ».
+
+#### 16.4.13 دليل الاستخدام (`pages/Guide.tsx`)
+صفحة `/guide` لكل مستخدم مسجّل: بحث نصي في كل الأقسام، شريط روابط سريعة، وأقسام قابلة للطي (البداية، الأسعار، القطع والأطقم، البيع، المخزون، الجرد، التقارير، الإعدادات، المستخدمون، النسخ الاحتياطي، أسئلة شائعة) — خطوات مرقّمة وملاحظات ورابط للشاشة. أقسام «للمالك» لا تظهر للبائع. المحتوى مصفوفة `SECTIONS` ثابتة في الملف.
+
 ### 16.5 الجداول المتجاوبة (`components/ui/data-table.tsx`)
 `DataTable` يعرض جدولاً على `sm+` (`hidden ... sm:block` مع تمرير أفقي) وبطاقات `<ul>` على الشاشات الأصغر (`sm:hidden`)؛ `Column.hideOnMobile` يُخفي عموداً في البطاقات، و`labelOnMobile:false` يُخفي عنوانه ويجعل القيمة بعرض كامل. `loading` ⇒ `LoadingBlock rows=5`؛ لا صفوف ⇒ `EmptyState title='لا توجد بيانات'` أو ما يمرّره المستدعي؛ `onRowClick` يضيف مؤشراً وحالة hover. `Pagination` تخفي نفسها عند صفحة واحدة، وتعرض «عرض X–Y من Z» مع «السابق» و`page / pages` و«التالي».
 
@@ -1827,6 +1924,6 @@ const stocktakeLineSchema = z.object({
 `<div class="print-area">` بعرض أقصى 430px على الشاشة، خلفية بيضاء دائماً وألوان طباعة ثابتة (`#111,#555,#666,#777,#999,#bbb,#e2e2e2,#c0392b,#222`) لا تتبع الثيم. المحتوى بالترتيب: اسم المحل، «فاتورة بيع ذهب»؛ «رقم الفاتورة / التاريخ / البائع / العميل / الهاتف»؛ جدول أعمدة «الصنف / عيار / وزن / كمية / السعر»؛ «عدد القطع / طريقة الدفع / سعر الصرف (نقدي أو صك مصدق) / الإجمالي {currency}»؛ شريط «فاتورة ملغاة — السبب» عند الإلغاء؛ «شكراً لتعاملكم معنا · البضاعة المباعة لا تُرد إلا وفق سياسة المحل»؛ وسطر `invoiceNo · fmtDateTime` باتجاه LTR. الطباعة عبر `window.print()` من شاشة البيع أو التفاصيل، ولا يوجد توليد PDF في الخادم (راجع 1.4).
 
 ### 16.7 معجم المكوّنات والملفات
-`components/ui/primitives.tsx` يوفّر `Button` (variants: primary/secondary/ghost/soft/danger، sizes، loading/icon)، `Card`, `Field` (label/hint/error/required)، `Input`, `NumberInput` (suffix)، `Select` (placeholder)، `Textarea`, `Checkbox`, `Badge` (tone success/danger/warning/gold/info/muted، مع نقطة `dot`)، `StatCard`، `PageHeader`، `SectionTitle`، `Tabs` (items بـlabel/icon/badge)، `EmptyState`، `Skeleton`/`LoadingBlock`، `Modal`، `ConfirmDialog`، و`Toast`. `components/Brand.tsx` يوفّر `GoldMark` و`Splash`. ملفات الواجهة: `app/App.tsx`, `layout/AppShell.tsx`, `components/{Receipt,Brand}.tsx`, `components/ui/{primitives,data-table,toast,overlay}.tsx`, `lib/{api,auth,theme,format,types,pricing-preview,copy,cn}.ts(x)`, و`pages/{Login,Dashboard,Prices,Items,ItemForm,Sales,SaleNew,SaleDetail,Inventory,Stocktake,StocktakeDetail,Reports,Settings,Users}.tsx`.
+`components/ui/primitives.tsx` يوفّر `Button` (variants: primary/secondary/ghost/soft/danger، sizes، loading/icon)، `Card`, `Field` (label/hint/error/required)، `Input`, `NumberInput` (suffix)، `Select` (placeholder)، `Textarea`, `Checkbox`, `Badge` (tone success/danger/warning/gold/info/muted، مع نقطة `dot`)، `StatCard`، `PageHeader`، `SectionTitle`، `Tabs` (items بـlabel/icon/badge)، `EmptyState`، `Skeleton`/`LoadingBlock`، `Modal`، `ConfirmDialog`، و`Toast`. `components/Brand.tsx` يوفّر `GoldMark` و`Splash`. ملفات الواجهة: `app/App.tsx`, `layout/AppShell.tsx`, `components/{Receipt,Brand}.tsx`, `components/ui/{primitives,data-table,toast,overlay}.tsx`, `lib/{api,auth,theme,format,types,pricing-preview,copy,cn}.ts(x)`, و`components/BackupStatusCard.tsx`, `lib/backup.ts`, و`pages/{Login,Dashboard,Prices,Items,ItemForm,Sales,SaleNew,SaleDetail,Inventory,Stocktake,StocktakeDetail,Reports,Settings,Users,Backups,Guide}.tsx`.
 
 > للاستخدام اليومي راجع [USER_MANUAL.md](USER_MANUAL.md)، وللفروق بين الإصدارات راجع [CHANGELOG.md](CHANGELOG.md)، ولخلفية القرارات راجع [ARCHITECTURE.md](ARCHITECTURE.md) و[DECISIONS.md](DECISIONS.md).

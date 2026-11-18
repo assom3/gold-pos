@@ -66,7 +66,9 @@ Vite dev server :5173  ──proxy /api──▶  Express API :4000  ──Prism
 | `routes/inventory.ts` | ملخص تقييم المخزون + صفوف الأصناف مع حجب التكلفة/الهامش عن البائع |
 | `routes/stocktakes.ts` | فتح جرد، لقطة، تعديل الأسطر، إغلاق، تقرير فروقات |
 | `routes/reports.ts` | مبيعات، أرباح، مخزون، سجل أسعار، سجل تدقيق |
-| `routes/dashboard.ts` | مؤشرات الصفحة الرئيسية |
+| `routes/dashboard.ts` | مؤشرات الصفحة الرئيسية (+ ملخص النسخ الاحتياطي للمالك) |
+| `routes/backups.ts` | إدارة النسخ الاحتياطي (للمالك): نظرة عامة، إعدادات الجدولة، نسخ يدوي، تنزيل، حذف |
+| `lib/backup.ts` | خدمة النسخ: `mysqldump` ← gzip ← تحقق سلامة ← احتفاظ، حساب الموعد التالي، والمجدول |
 | `app.ts` | تركيب middleware والمسارات و`/api/health` و`/api/bootstrap` |
 
 ### المعاملات والذرّية
@@ -151,6 +153,7 @@ computeItemPrice(input)     // يجمع القيمة + الحجر + الربح +
 - `Item`, `ItemComponent` — قطعة أو طقم بمكوّنات، أوزان، حجر/فصوص، حالة، وشراء بالغرام: `purchaseGramPrice`, `purchasePrice` (بعملة الشراء), `purchaseCurrency`, `purchaseFxRate`, `purchaseCostDinar`. المصنّع عبر `manufacturerId` → `Lookup` مع نص مرآة في `manufacturer`.
 - `Sale`, `SaleItem` — فاتورة وسطورها (الكمية وسعر الوحدة والإجمالي؛ D-30 يحفظ السعر النهائي فقط)، مع لقطة سياسة الفاتورة: `profitMode`, `profitValue`, `roundingStep`, `fxMode`, `fxRate`.
 - `Stocktake`, `StocktakeLine` — جرد ولقطته.
+- `BackupSetting` — صف واحد لجدولة النسخ (تفعيل، فاصل، وقت، عدد الاحتفاظ). `BackupRun` — سجل كل محاولة نسخ (حالة، ملف، حجم، خطأ).
 - `AuditLog` — سجل التعديلات.
 - `Sequence` — عدادات الأكواد.
 
@@ -250,6 +253,7 @@ computeItemPrice(input)     // يجمع القيمة + الحجر + الربح +
 - MySQL محمول: `tools/mysql-init.ps1` مرة واحدة، ثم `mysql-start.ps1` / `mysql-stop.ps1`.
 - مخطط Prisma يُطبَّق بـ`npm.cmd run db:push` (لا يوجد مجلد `migrations` بعد)؛ `npm.cmd run db:migrate` متاح لإنشاء أول ترحيل عند الحاجة.
 - `db:reset` يعيد البناء والبيانات الأولية — للاستعمال الحذر فقط.
+- **النسخ الاحتياطي:** مجدول داخل عملية الـAPI (`lib/backup.ts`) يفحص كل دقيقة ويُنفّذ نسخة `mysqldump` مضغوطة إلى `backups/` (أو `BACKUP_DIR`) عند حلول الموعد، مع نسخ اختياري إلى `BACKUP_COPY_DIR`. الاستعادة من سطر الأوامر فقط: `npm.cmd run db:restore`. فحص الميزة: `npm.cmd run test:backup`.
 - سلسلة التحقق المعتمدة: `npm.cmd test`، `npm.cmd run typecheck`، `npm.cmd run build`، ثم `npm.cmd run test:integration` و`npm.cmd run test:stress` على خادم حي وMySQL مهيأ.
 - تفاصيل الأوامر في `README.md`، وقائمة التحقق الكاملة في **[SYSTEM_SPECIFICATION.md](SYSTEM_SPECIFICATION.md)**.
 

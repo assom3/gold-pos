@@ -231,6 +231,8 @@ export interface DashboardData {
     soldItems: number;
   };
   recentSales: Sale[];
+  /** حالة النسخ الاحتياطي — للمالك فقط، وإلا null */
+  backup: BackupSummary | null;
   lastStocktake: {
     id: number;
     type: StocktakeType;
@@ -376,4 +378,55 @@ export interface AuditEntry {
   newValue: unknown;
   createdAt: string;
   user: { id: number; name: string; role: Role } | null;
+}
+
+/* ───────────── النسخ الاحتياطي ───────────── */
+
+export type BackupStatus = 'RUNNING' | 'OK' | 'FAILED';
+export type BackupTrigger = 'MANUAL' | 'SCHEDULED';
+export type BackupHealth = 'ok' | 'warning' | 'none' | 'off';
+
+export interface BackupSummary {
+  health: BackupHealth;
+  enabled: boolean;
+  schedulerActive: boolean;
+  running: boolean;
+  intervalHours: number;
+  lastOkAt: string | null;
+  lastOkSizeBytes: number | null;
+  /** يظهر فقط إذا فشلت محاولة بعد آخر نجاح */
+  lastFailedAt: string | null;
+  nextRunAt: string | null;
+}
+
+export interface BackupRunRow {
+  id: number;
+  trigger: BackupTrigger;
+  status: BackupStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  fileName: string | null;
+  sizeBytes: number | null;
+  error: string | null;
+  fileExists: boolean;
+}
+
+export interface BackupSettings {
+  enabled: boolean;
+  intervalHours: number;
+  timeOfDay: string;
+  retentionCount: number;
+}
+
+export interface BackupOverview {
+  settings: BackupSettings;
+  summary: BackupSummary;
+  storage: {
+    dir: string;
+    copyDir: string | null;
+    mysqldump: boolean;
+    totalSizeBytes: number;
+    count: number;
+  };
+  runs: BackupRunRow[];
 }

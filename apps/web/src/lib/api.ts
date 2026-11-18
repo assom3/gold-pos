@@ -56,7 +56,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       payload?.message ?? 'حدث خطأ غير متوقع',
       payload?.details,
     );
-    if (res.status === 401 && !path.startsWith('/auth/login')) {
+    // فقط انتهاء الجلسة الفعلي يُخرج المستخدم؛ أي 401 آخر (كلمة مرور خاطئة مثلاً) يُعرض كخطأ عادي
+    if (res.status === 401 && error.code === 'UNAUTHORIZED' && !path.startsWith('/auth/login')) {
       window.dispatchEvent(new CustomEvent('auth:expired'));
     }
     throw error;
