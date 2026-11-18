@@ -112,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\mysql-stop.ps1
 | `npm.cmd run test:integration` | فحص تكاملي شامل على خادم حي (142 فحصاً) |
 | `npm.cmd run test:stress` | فحص حِمل وتزامن للمسارات الحساسة |
 | `npm.cmd run db:cleanup-qa` | حذف بيانات الاختبار (`QA-`) المتبقية بعد الفحوص |
-| `npm.cmd run docs:pdf` | توليد `docs/USER_MANUAL.pdf` من دليل الماركداون |
+| `npm.cmd run docs:pdf` | تحديث `docs/USER_MANUAL.pdf` من دليل Markdown عند الحاجة |
 | `npm.cmd run db:generate` | توليد Prisma Client |
 | `npm.cmd run db:push` | مزامنة مخطط Prisma مع MySQL (المسار المعتمد) |
 | `npm.cmd run db:migrate` | إنشاء أول ترحيل عند الحاجة (لا يوجد مجلد `migrations` بعد) |

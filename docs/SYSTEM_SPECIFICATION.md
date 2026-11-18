@@ -196,6 +196,8 @@ Gold/
 | `npm.cmd test` | اختبارات محرك التسعير (28 اختباراً) |
 | `npm.cmd run test:integration` | فحص تكاملي شامل على خادم وMySQL حيّين |
 | `npm.cmd run test:stress` | فحص حِمل وتزامن على المسارات الحساسة |
+| `npm.cmd run db:cleanup-qa` | حذف بيانات الاختبار التي تحمل بادئة `QA-` |
+| `npm.cmd run docs:pdf` | تحديث `docs/USER_MANUAL.pdf` من دليل Markdown عند الحاجة |
 | `npm.cmd run db:generate` | توليد Prisma Client |
 | `npm.cmd run db:push` | مزامنة المخطط مع MySQL (المسار المعتمد حالياً) |
 | `npm.cmd run db:migrate` | `prisma migrate dev --name init` لإنشاء أول ترحيل عند الحاجة |
