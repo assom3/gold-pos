@@ -49,22 +49,25 @@ lookupsRouter.post(
       throw forbidden('إضافة عناصر هذه القائمة متاحة للمالك فقط');
     }
 
+    // العيار يُخزَّن بصيغة موحّدة («21» لا «021» ولا «21.0») حتى لا يتكرر بصيغ مختلفة
+    let value = body.value;
     if (body.kind === 'KARAT') {
       const k = Number(body.value);
-      if (!Number.isInteger(k) || k < 1 || k > 24) {
-        throw badRequest('العيار يجب أن يكون رقماً بين 1 و 24');
+      if (!/^\d{1,2}$/.test(body.value) || !Number.isInteger(k) || k < 1 || k > 24) {
+        throw badRequest('العيار يجب أن يكون رقماً صحيحاً بين 1 و 24');
       }
+      value = String(k);
     }
 
     const exists = await prisma.lookup.findUnique({
-      where: { kind_value: { kind: body.kind as LookupKind, value: body.value } },
+      where: { kind_value: { kind: body.kind as LookupKind, value } },
     });
     if (exists) throw conflict('هذه القيمة موجودة مسبقاً');
 
     const row = await prisma.lookup.create({
       data: {
         kind: body.kind as LookupKind,
-        value: body.value,
+        value,
         sortOrder: body.sortOrder ?? 100,
       },
     });
@@ -100,10 +103,20 @@ lookupsRouter.patch(
 
     if (body.value !== undefined && existing.kind === 'KARAT') {
       const k = Number(body.value);
-      if (!Number.isInteger(k) || k < 1 || k > 24) throw badRequest('العيار يجب أن يكون رقماً بين 1 و 24');
+      if (!/^\d{1,2}$/.test(body.value) || !Number.isInteger(k) || k < 1 || k > 24) {
+        throw badRequest('العيار يجب أن يكون رقماً صحيحاً بين 1 و 24');
+      }
+      body.value = String(k);
     }
 
-    const row = await prisma.lookup.update({ where: { id }, data: body });
+    const row = await prisma.$transaction(async (tx) => {
+      const updated = await tx.lookup.update({ where: { id }, data: body });
+      // اسم المصنّع يُنسخ نصاً داخل الصنف (للتقارير والبحث) — نُبقيه مطابقاً عند إعادة التسمية
+      if (existing.kind === 'MANUFACTURER' && body.value !== undefined && body.value !== existing.value) {
+        await tx.item.updateMany({ where: { manufacturerId: id }, data: { manufacturer: body.value } });
+      }
+      return updated;
+    });
 
     await audit({
       userId: req.user!.id,

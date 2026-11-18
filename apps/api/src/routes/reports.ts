@@ -67,6 +67,8 @@ reportsRouter.get(
       byPayment.set(pName, p);
 
       for (const line of sale.items) {
+        // عند تصفية العيار لا نعدّ بنود الفاتورة من أعيرة أخرى
+        if (karat && line.item.karat !== karat) continue;
         const k = byKarat.get(line.item.karat) ?? { karat: line.item.karat, count: 0, total: 0, weight: 0 };
         k.count += line.quantity;
         k.total += Number(line.lineTotal);

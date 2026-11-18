@@ -7,11 +7,13 @@ import {
   Coins,
   ExternalLink,
   History,
+  Info,
   RefreshCw,
   TriangleAlert,
 } from 'lucide-react';
 import { buildPriceTable, PricingError, TROY_OUNCE_GRAMS } from '@gold/pricing';
 import { api, qs } from '../lib/api';
+import { RAW_GOLD_PRICE_NOTE } from '../lib/copy';
 import { useAuth } from '../lib/auth';
 import type { Lookup, Paged, PriceTableView, PriceUpdate, Setting } from '../lib/types';
 import { fmtDateTime, fmtMoney, timeAgo } from '../lib/format';
@@ -174,6 +176,11 @@ export default function Prices() {
         }
       />
 
+      <p className="flex items-start gap-2 rounded-lg border border-gold/25 bg-goldsoft/50 px-3 py-2 text-[11px] leading-5 text-muted">
+        <Info className="mt-0.5 size-3.5 shrink-0 text-gold" />
+        <span>{RAW_GOLD_PRICE_NOTE}</span>
+      </p>
+
       {current?.stale ? (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[color-mix(in_oklab,var(--warning)_30%,transparent)] bg-warningsoft px-3.5 py-2.5 text-xs text-text">
           <TriangleAlert className="size-4 text-warning" />
@@ -195,7 +202,7 @@ export default function Prices() {
                   href={docsUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted transition-colors hover:text-gold"
+                  className="hidden items-center gap-1 text-[11px] font-semibold text-muted transition-colors hover:text-gold sm:inline-flex"
                 >
                   توثيق goldapi.dev
                   <ExternalLink className="size-3" aria-hidden />
@@ -231,7 +238,7 @@ export default function Prices() {
             {provider?.mode === 'api' && provider?.configured && !provider.autoRefresh ? (
               <Badge tone="muted">التحديث التلقائي معطّل</Badge>
             ) : null}
-            <span>المفتاح يعمل من داخل الخادم فقط ولا يظهر في المتصفح.</span>
+            <span className="hidden sm:inline">المفتاح يعمل من داخل الخادم فقط ولا يظهر في المتصفح.</span>
           </div>
 
           <div className="mt-4 space-y-4">
@@ -292,7 +299,7 @@ export default function Prices() {
               </div>
             </Field>
 
-            <div className="rounded-xl border border-border bg-surface2/60 p-3">
+            <div className="hidden rounded-xl border border-border bg-surface2/60 p-3 sm:block">
               <p className="text-[11px] font-semibold text-muted">المعادلة المستعملة</p>
               <div className="mt-2 space-y-1.5 font-mono text-[11px] leading-5 text-text" dir="ltr">
                 <p>
@@ -396,7 +403,7 @@ export default function Prices() {
                   </table>
                 </div>
 
-                <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-surface2/40 px-3 py-2.5 text-[11px] leading-5 text-muted">
+                <div className="mt-3 hidden items-start gap-2 rounded-xl border border-border bg-surface2/40 px-3 py-2.5 text-[11px] leading-5 text-muted sm:flex">
                   <Calculator className="mt-0.5 size-3.5 shrink-0 text-gold" />
                   <p>
                     التحويل يبدأ من الذهب الخالص: قيمة الأونصة بالعملة المحلية ÷ {TROY_OUNCE_GRAMS} = سعر غرام 24،
@@ -447,7 +454,7 @@ export default function Prices() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <SectionTitle
           title="كيف يتحوّل سعر الأونصة إلى سعر العيار؟"
           description="ثلاث خطوات واضحة، وكل خطوة قابلة للتحقق من الأرقام أعلاه."

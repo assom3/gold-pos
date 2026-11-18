@@ -7,7 +7,7 @@ import { audit } from '../lib/audit.js';
 import { nextSequence } from '../lib/sequence.js';
 import { basisFromSettings } from '../lib/item-math.js';
 import { getCurrentPrices } from '../lib/prices.js';
-import { valueItem } from '../lib/valuation.js';
+import { round2, round3, valueItem } from '../lib/valuation.js';
 import { requireRole } from '../auth/middleware.js';
 
 export const stocktakesRouter = Router();
@@ -24,9 +24,6 @@ stocktakesRouter.post(
   ah(async (req, res) => {
     const body = createSchema.parse(req.body);
 
-    const open = await prisma.stocktake.findFirst({ where: { status: 'OPEN' } });
-    if (open) throw badRequest('يوجد جرد مفتوح بالفعل، يجب إغلاقه أولاً');
-
     const [setting, prices, items] = await Promise.all([
       prisma.setting.findUnique({ where: { id: 1 } }),
       getCurrentPrices(),
@@ -38,7 +35,16 @@ stocktakesRouter.post(
     const fx = prices.fx?.value ?? 0;
 
     const stocktake = await prisma.$transaction(async (tx) => {
+      // أخذ العدّاد أولاً يقفل صفه، فيتسلسل فتح الجردين المتزامنين
+      // ويرى الثاني الجرد المفتوح من الأول قبل أن يُنشئ جرداً آخر.
       const seq = await nextSequence(tx, 'STOCKTAKE_REF');
+
+      // قراءة بقفل (FOR UPDATE) لترى آخر ما التُزم به، لا لقطة المعاملة القديمة
+      const open = await tx.$queryRaw<Array<{ id: number }>>`
+        SELECT id FROM Stocktake WHERE status = 'OPEN' LIMIT 1 FOR UPDATE
+      `;
+      if (open.length > 0) throw badRequest('يوجد جرد مفتوح بالفعل، يجب إغلاقه أولاً');
+
       const created = await tx.stocktake.create({
         data: {
           type: body.type,
@@ -53,12 +59,13 @@ stocktakesRouter.post(
             const valuation = prices.ready
               ? valueItem(item, ounce, fx, basis)
               : { value: 0 };
+            // الصنف بكمية N يُعدّ كله في سطر واحد: الوزن والقيمة المتوقعان = وحدة × الكمية
             return {
               stocktakeId: created.id,
               itemId: item.id,
               itemCode: item.code,
-              expectedWeight: item.totalWeight,
-              valueAtOpen: valuation.value,
+              expectedWeight: round3(Number(item.totalWeight) * item.quantity),
+              valueAtOpen: round2(valuation.value * item.quantity),
               present: true,
             };
           }),
@@ -156,6 +163,12 @@ stocktakesRouter.patch(
 
     // تعديل الجرد يُسجَّل بالكامل: من عدّل، وماذا كانت القيمة قبل وبعد
     const updated = await prisma.$transaction(async (tx) => {
+      // نقفل صف الجرد ثم نعيد فحص حالته: يمنع تعديل سطر أثناء إغلاق الجرد من طلب متزامن (BR-14)
+      const locked = await tx.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM Stocktake WHERE id = ${id} FOR UPDATE
+      `;
+      if (locked[0]?.status !== 'OPEN') throw badRequest('لا يمكن تعديل جرد مغلق (BR-14)');
+
       const changed = await tx.stocktakeLine.updateMany({
         where: { id: lineId, stocktakeId: id },
         data: {
@@ -239,6 +252,9 @@ stocktakesRouter.get(
   ah(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw badRequest('معرّف غير صالح');
+
+    const exists = await prisma.stocktake.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) throw notFound('الجرد غير موجود');
 
     const lines = await prisma.stocktakeLine.findMany({
       where: { stocktakeId: id },

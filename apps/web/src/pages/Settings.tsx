@@ -180,8 +180,8 @@ export default function SettingsPage() {
       setFormError('اسم المحل مطلوب');
       return;
     }
-    if (!draft.currency.trim()) {
-      setFormError('العملة مطلوبة');
+    if (!/^[A-Za-z]{3}$/.test(draft.currency.trim())) {
+      setFormError('رمز العملة يجب أن يكون 3 حروف لاتينية (مثل LYD)');
       return;
     }
     if (profitValue < 0) {
@@ -304,12 +304,12 @@ export default function SettingsPage() {
                   maxLength={160}
                 />
               </Field>
-              <Field label="رمز العملة" required hint="مثال: LYD، USD، SAR — يظهر بجانب كل مبلغ.">
+              <Field label="رمز العملة" required hint="3 حروف مثل LYD — يظهر بجانب كل مبلغ وهي العملة المحلية للمحل.">
                 <Input
                   value={draft.currency}
                   onChange={(e) => update('currency', e.target.value)}
                   className="ltr-nums text-start uppercase"
-                  maxLength={8}
+                  maxLength={3}
                 />
               </Field>
               <Field label="العيار الافتراضي" hint="يُختار تلقائياً عند إضافة صنف جديد.">

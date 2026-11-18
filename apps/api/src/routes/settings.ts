@@ -15,7 +15,7 @@ const schema = z.object({
     .trim()
     .min(2)
     .max(8)
-    .regex(/^[a-zA-Z]{2,8}$/, 'رمز العملة يجب أن يكون حروفاً لاتينية')
+    .regex(/^[a-zA-Z]{3}$/, 'رمز العملة يجب أن يكون 3 حروف لاتينية (مثل LYD)')
     .transform((value) => value.toUpperCase())
     .optional(),
   codeMode: z.enum(['AUTO', 'MANUAL']).optional(),

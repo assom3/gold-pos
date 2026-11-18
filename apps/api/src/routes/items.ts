@@ -8,7 +8,6 @@ import { audit } from '../lib/audit.js';
 import { nextSequence } from '../lib/sequence.js';
 import { aggregateComponents, basisFromSettings, pieceNetGold, purchaseCostDinar, purchaseFromGram } from '../lib/item-math.js';
 import { computeWeights } from '@gold/pricing';
-import { config } from '../config.js';
 import { requireRole } from '../auth/middleware.js';
 
 export const itemsRouter = Router();
@@ -49,7 +48,11 @@ const itemSchema = z.object({
 
   purchaseGramPrice: z.number().min(0).nullable().optional(),
   purchasePrice: z.number().min(0).optional().default(0),
-  purchaseCurrency: z.string().trim().min(1).max(3).default('USD'),
+  purchaseCurrency: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{3}$/, 'رمز عملة الشراء يجب أن يكون 3 حروف لاتينية')
+    .default('USD'),
   purchaseFxRate: z.number().positive('سعر الصرف يجب أن يكون أكبر من صفر').optional(),
   purchaseStatus: z.enum(['NEW', 'USED', 'SCRAP']).default('NEW'),
 
@@ -214,17 +217,21 @@ interface PurchaseValues {
  * حساب الشراء: سعر الغرام هو المصدر، والوزن هو الذهب الصافي.
  * إذا لم يُرسل سعر الغرام (واجهات قديمة) نستخدم الإجمالي المرسل ونستنتج سعر الغرام.
  */
-function resolvePurchase(body: z.infer<typeof itemSchema>, netGoldWeight: number): PurchaseValues {
+function resolvePurchase(
+  body: z.infer<typeof itemSchema>,
+  netGoldWeight: number,
+  localCurrency: string,
+): PurchaseValues {
   const currency = body.purchaseCurrency.toUpperCase();
   const gramPrice = body.purchaseGramPrice;
-  const fxRate =
-    currency === config.LOCAL_CURRENCY ? 1 : Number(body.purchaseFxRate ?? 0);
-  if (currency !== config.LOCAL_CURRENCY && (!Number.isFinite(fxRate) || fxRate <= 0)) {
+  const isLocal = currency === localCurrency;
+  const fxRate = isLocal ? 1 : Number(body.purchaseFxRate ?? 0);
+  if (!isLocal && (!Number.isFinite(fxRate) || fxRate <= 0)) {
     throw badRequest('سعر الصرف مطلوب عند الشراء بعملة أجنبية');
   }
 
   if (gramPrice !== null && gramPrice !== undefined) {
-    const calc = purchaseFromGram(gramPrice, netGoldWeight, currency, fxRate, config.LOCAL_CURRENCY);
+    const calc = purchaseFromGram(gramPrice, netGoldWeight, currency, fxRate, localCurrency);
     return { gramPrice, total: calc.total, currency, fxRate: calc.fxRate, costDinar: calc.costDinar };
   }
 
@@ -234,7 +241,7 @@ function resolvePurchase(body: z.infer<typeof itemSchema>, netGoldWeight: number
     total,
     currency,
     fxRate,
-    costDinar: purchaseCostDinar(total, currency, fxRate, config.LOCAL_CURRENCY),
+    costDinar: purchaseCostDinar(total, currency, fxRate, localCurrency),
   };
 }
 
@@ -379,7 +386,7 @@ itemsRouter.post(
     }
 
     const totals = resolveTotals(body);
-    const purchase = resolvePurchase(body, totals.netGoldWeight);
+    const purchase = resolvePurchase(body, totals.netGoldWeight, setting.currency.toUpperCase());
     const [manufacturer, categoryId, supplierId, countryId] = await Promise.all([
       resolveManufacturer(body),
       resolveCategoryId(body.type as ItemType, body.categoryId),
@@ -478,12 +485,16 @@ itemsRouter.patch(
     if (!existing) throw notFound('الصنف غير موجود');
     if (existing.status === 'SOLD') throw badRequest('لا يمكن تعديل صنف مباع');
     if (body.type !== existing.type) throw badRequest('لا يمكن تغيير نوع الصنف بعد إنشائه');
+    if (body.type === 'SET' && body.quantity !== 1) {
+      throw badRequest('الطقم كود واحد لنسخة واحدة فقط');
+    }
     if (body.quantity > 1 && body.confirmSameWeight !== true) {
       throw badRequest('يجب تأكيد أن جميع القطع بنفس الوزن والمواصفات');
     }
 
+    const setting = await getSettings();
     const totals = resolveTotals(body);
-    const purchase = resolvePurchase(body, totals.netGoldWeight);
+    const purchase = resolvePurchase(body, totals.netGoldWeight, setting.currency.toUpperCase());
     const [manufacturer, categoryId, supplierId, countryId] = await Promise.all([
       resolveManufacturer(body),
       resolveCategoryId(body.type as ItemType, body.categoryId),
@@ -520,6 +531,7 @@ itemsRouter.patch(
           manufacturer: manufacturer.name,
           description: body.description ?? null,
           notes: body.notes ?? null,
+          ...(body.addedAt ? { addedAt: new Date(body.addedAt) } : {}),
           ...(body.type === 'SET' && body.components
             ? {
                 components: {
@@ -580,7 +592,7 @@ itemsRouter.delete(
     });
     if (!existing) throw notFound('الصنف غير موجود');
     if (existing._count.saleItems > 0) {
-      throw conflict('لا يمكن حذف صنف مرتبط بعمليات بيع — يمكنك تعطيله بدل ذلك');
+      throw conflict('لا يمكن حذف صنف مرتبط بعمليات بيع. يبقى الصنف في السجل التاريخي للفواتير.');
     }
 
     await prisma.item.delete({ where: { id } });

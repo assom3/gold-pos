@@ -419,7 +419,7 @@ export default function Inventory() {
         className="px-1"
       />
 
-      <p className="px-1 text-[11px] leading-5 text-muted">
+      <p className="hidden px-1 text-[11px] leading-5 text-muted sm:block">
         التقييم يعتمد على سعر غرام العيار × وزن أساس الاحتساب، ويُعاد حسابه تلقائياً عند تحديث أسعار الذهب.
         {showCost ? ' التكلفة والهامش تقديريان بحسب تكلفة الشراء المسجّلة.' : ''}
       </p>

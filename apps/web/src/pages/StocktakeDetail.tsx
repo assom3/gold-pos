@@ -77,7 +77,8 @@ export default function StocktakeDetail() {
   const { data: differences } = useQuery({
     queryKey: ['stocktakes', stocktakeId, 'differences'],
     queryFn: () => api.get<StocktakeDifferences>(`/stocktakes/${stocktakeId}/differences`),
-    enabled: valid,
+    // تقرير الفروقات في الخادم للمالك فقط؛ البائع يرى ملخصاً محسوباً من أسطر الجرد نفسها
+    enabled: valid && isOwner,
   });
 
   useEffect(() => {
@@ -462,7 +463,7 @@ export default function StocktakeDetail() {
             tone="danger"
             emptyText="كل القطع المسجّلة موجودة."
           >
-            {(differences?.missing ?? []).map((line) => (
+            {(differences?.missing ?? lines.filter((l) => !draftFor(l).present)).map((line) => (
               <DiffRow
                 key={line.id}
                 code={line.itemCode}
@@ -478,7 +479,15 @@ export default function StocktakeDetail() {
             tone="warning"
             emptyText="لا فروقات في الأوزان."
           >
-            {(differences?.weightDiffs ?? []).map((line) => (
+            {(
+              differences?.weightDiffs ??
+              lines
+                .filter((l) => {
+                  const diff = lineDiff(l);
+                  return draftFor(l).present && diff !== null && Math.abs(diff) >= 0.001;
+                })
+                .map((l) => ({ ...l, weightDiff: lineDiff(l) }))
+            ).map((line) => (
               <DiffRow
                 key={line.id}
                 code={line.itemCode}

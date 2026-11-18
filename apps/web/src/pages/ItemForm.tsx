@@ -204,8 +204,14 @@ export default function ItemForm() {
     const list = (lookups?.KARAT ?? [])
       .map((l) => Number(l.value))
       .filter((k) => Number.isInteger(k) && k > 0 && k <= 24);
-    return list.length > 0 ? list : [18, 21, 24];
-  }, [lookups]);
+    const base = list.length > 0 ? list : [18, 21, 24];
+    // أعيرة الصنف المحفوظ تبقى متاحة حتى لو عُطّل العيار من القوائم لاحقاً،
+    // وإلا فشل التحقق عند تعديل صنف قديم.
+    const own = [existing?.karat, ...(existing?.components ?? []).map((c) => c.karat)].filter(
+      (k): k is number => typeof k === 'number',
+    );
+    return [...new Set([...base, ...own])].sort((a, b) => a - b);
+  }, [lookups, existing]);
 
   const categories = lookups?.CATEGORY ?? [];
   const suppliers = lookups?.SUPPLIER ?? [];
@@ -220,6 +226,8 @@ export default function ItemForm() {
 
   const localCurrency = settings?.currency ?? 'LYD';
   const readOnly = isEdit && (!isOwner || existing?.status === 'SOLD');
+  /** بيانات الشراء للمالك، وللبائع فقط إذا فعّل المالك إظهار التكلفة (الخادم يرفض غير ذلك) */
+  const canSeeCost = isOwner || settings?.showCostToSeller === true;
 
   /* ── تهيئة أولية للعيار وسعر الصرف ── */
   useEffect(() => {
@@ -415,9 +423,11 @@ export default function ItemForm() {
       });
     }
 
-    if (num(form.purchaseGramPrice) < 0) next.purchaseGramPrice = 'سعر الغرام لا يمكن أن يكون سالباً';
-    if (form.purchaseCurrency !== localCurrency && num(form.purchaseFxRate) <= 0) {
-      next.purchaseFxRate = 'سعر الصرف مطلوب للعملة الأجنبية';
+    if (canSeeCost) {
+      if (num(form.purchaseGramPrice) < 0) next.purchaseGramPrice = 'سعر الغرام لا يمكن أن يكون سالباً';
+      if (form.purchaseCurrency !== localCurrency && num(form.purchaseFxRate) <= 0) {
+        next.purchaseFxRate = 'سعر الصرف مطلوب للعملة الأجنبية';
+      }
     }
     if (settings?.codeMode === 'MANUAL' && !isEdit && !/^[A-Za-z0-9_-]+$/.test(form.code.trim())) {
       next.code = 'الكود مطلوب ويقبل حروفاً لاتينية وأرقاماً وشرطات فقط';
@@ -454,12 +464,15 @@ export default function ItemForm() {
       inlaysWeight: num(form.inlaysWeight),
       quantity: form.type === 'SET' ? 1 : num(form.quantity) || 1,
       confirmSameWeight: form.type === 'SET' ? undefined : form.confirmSameWeight,
-      purchaseGramPrice: num(form.purchaseGramPrice),
-      purchasePrice: purchaseCalc.unitTotal,
-      purchaseCurrency: form.purchaseCurrency.toUpperCase(),
-      purchaseFxRate: form.purchaseCurrency === localCurrency ? 1 : num(form.purchaseFxRate),
+      // بدون صلاحية التكلفة لا نرسل أي بيانات شراء (الخادم يرفضها للبائع)
+      purchaseGramPrice: canSeeCost ? num(form.purchaseGramPrice) : 0,
+      purchasePrice: canSeeCost ? purchaseCalc.unitTotal : 0,
+      purchaseCurrency: canSeeCost ? form.purchaseCurrency.toUpperCase() : localCurrency.toUpperCase(),
+      purchaseFxRate:
+        !canSeeCost || form.purchaseCurrency === localCurrency ? 1 : num(form.purchaseFxRate),
       purchaseStatus: form.purchaseStatus,
-      weightBasis: basis,
+      // أساس الوزن يتبع إعداد المحل ما لم يُحدَّد تجاوز خاص بالصنف؛ لا نُجمّد إعداد اليوم داخل الصنف
+      weightBasis: isEdit ? (existing?.weightBasis ?? null) : null,
       supplierId: form.supplierId ? Number(form.supplierId) : null,
       countryId: form.countryId ? Number(form.countryId) : null,
       manufacturerId: form.manufacturerId ? Number(form.manufacturerId) : null,
@@ -607,7 +620,9 @@ export default function ItemForm() {
                 required={codeMode === 'MANUAL'}
                 error={errors.code}
                 hint={
-                  codeMode === 'AUTO'
+                  isEdit
+                    ? 'الكود ثابت بعد الإنشاء ولا يمكن تغييره'
+                    : codeMode === 'AUTO'
                     ? loadingCode
                       ? 'جارٍ توليد الكود…'
                       : nextCode?.code
@@ -619,7 +634,7 @@ export default function ItemForm() {
                 <Input
                   value={codeMode === 'MANUAL' || isEdit ? form.code : (nextCode?.code ?? '')}
                   onChange={(e) => update('code', e.target.value)}
-                  readOnly={codeMode === 'AUTO' && !isEdit}
+                  readOnly={isEdit || codeMode === 'AUTO'}
                   placeholder={codeMode === 'MANUAL' ? 'P-0001' : ''}
                   className="ltr-nums text-start font-mono"
                 />
@@ -820,7 +835,8 @@ export default function ItemForm() {
             </Card>
           )}
 
-          {/* الشراء */}
+          {/* الشراء — للمالك، أو للبائع إذا سمح إعداد المحل بإظهار التكلفة */}
+          {canSeeCost ? (
           <Card>
             <SectionTitle
               title="بيانات الشراء من الجملة"
@@ -915,6 +931,7 @@ export default function ItemForm() {
               بالدينار. سعر البيع لا يُحدد هنا؛ يُحسب في شاشة البيع حسب سعر السوق وسياسة الفاتورة.
             </p>
           </Card>
+          ) : null}
 
           {/* تفاصيل */}
           <Card>
@@ -971,6 +988,7 @@ export default function ItemForm() {
         {/* ملخص الشراء */}
         <aside className="order-first lg:order-none">
           <div className="space-y-3 lg:sticky lg:top-[84px]">
+            {canSeeCost ? (
             <Card className="relative overflow-hidden">
               <div
                 className="pointer-events-none absolute inset-0 opacity-70"
@@ -1016,15 +1034,18 @@ export default function ItemForm() {
                 ) : null}
               </div>
             </Card>
+            ) : null}
 
             <Card className="bg-surface2/40">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-text">
-                <Tag className="size-3.5 text-gold" /> أين سعر البيع؟
-              </p>
-              <p className="mt-2 text-[11px] leading-5 text-muted">
-                سعر البيع لا يُحسب في شاشة الشراء لأن سعر الأونصة وسعر الصرف يتغيران. عند البيع يُحسب السعر المقترح من
-                سعر السوق لحظة البيع، وتختار سياسة الربح والتقريب وسعر الصرف (نقدي أو صك مصدق) في نفس الفاتورة.
-              </p>
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-semibold text-text [&::-webkit-details-marker]:hidden">
+                  <Tag className="size-3.5 text-gold" /> أين سعر البيع؟
+                </summary>
+                <p className="mt-2 text-[11px] leading-5 text-muted">
+                  سعر البيع لا يُحسب في شاشة الشراء لأن سعر الأونصة وسعر الصرف يتغيران. عند البيع يُحسب السعر المقترح من
+                  سعر السوق لحظة البيع، وتختار سياسة الربح والتقريب وسعر الصرف (نقدي أو صك مصدق) في نفس الفاتورة.
+                </p>
+              </details>
             </Card>
           </div>
         </aside>
@@ -1035,10 +1056,16 @@ export default function ItemForm() {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur lg:hidden">
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] text-muted">تكلفة الشراء</p>
-              <p className="truncate text-sm font-semibold tabular-nums text-gold">
-                {purchaseCalc.unitCost === null ? 'أكمل البيانات' : `${fmtMoney(purchaseCalc.unitCost)} ${localCurrency}`}
-              </p>
+              {canSeeCost ? (
+                <>
+                  <p className="text-[10px] text-muted">تكلفة الشراء</p>
+                  <p className="truncate text-sm font-semibold tabular-nums text-gold">
+                    {purchaseCalc.unitCost === null ? 'أكمل البيانات' : `${fmtMoney(purchaseCalc.unitCost)} ${localCurrency}`}
+                  </p>
+                </>
+              ) : (
+                <p className="truncate text-[11px] text-muted">{form.name.trim() || 'صنف جديد'}</p>
+              )}
             </div>
             <Button variant="primary" icon={Save} loading={save.isPending} onClick={submit}>
               {isEdit ? 'حفظ' : 'حفظ الصنف'}

@@ -160,7 +160,8 @@ export default function Items() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="تعديل"
+              aria-label={isOwner && row.status === 'AVAILABLE' ? 'تعديل' : 'عرض'}
+              title={isOwner && row.status === 'AVAILABLE' ? 'تعديل' : 'عرض'}
               onClick={() => navigate(`/items/${row.id}`)}
             >
               <Pencil className="size-3.5" />

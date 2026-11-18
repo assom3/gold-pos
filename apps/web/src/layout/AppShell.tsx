@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { RAW_GOLD_PRICE_NOTE } from '../lib/copy';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
@@ -220,7 +221,7 @@ function PricePills({ view }: { view: PriceTableView | undefined }) {
             'flex shrink-0 items-baseline gap-1.5 rounded-lg border px-2 py-1 sm:px-2.5',
             pill.accent ? 'border-[color-mix(in_oklab,var(--gold)_30%,transparent)] bg-goldsoft/70' : 'border-border bg-surface',
           )}
-          title={`${pill.label}: ${pill.value}`}
+          title={`${pill.label}: ${pill.value}${pill.label === 'صرف' ? '' : ` · ${RAW_GOLD_PRICE_NOTE}`}`}
         >
           <span className="text-[10px] font-medium text-muted">{pill.label}</span>
           <span className={cn('text-xs font-semibold tabular-nums', pill.accent ? 'text-gold' : 'text-text')}>

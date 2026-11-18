@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { RAW_GOLD_PRICE_NOTE } from '../lib/copy';
 import { useAuth } from '../lib/auth';
 import type { DashboardData } from '../lib/types';
 import { fmtMoney, fmtNum, fmtWeight, timeAgo } from '../lib/format';
@@ -144,6 +145,10 @@ export default function Dashboard() {
                   </div>
                 ))}
           </div>
+
+          <p className="mt-3 border-t border-border/70 pt-2.5 text-[10px] leading-4 text-muted">
+            {RAW_GOLD_PRICE_NOTE}
+          </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-[11px] text-muted">
             <span>

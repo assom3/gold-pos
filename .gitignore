@@ -27,3 +27,6 @@ Thumbs.db
 # ── Tests & builds ──
 coverage/
 .vite/
+
+# ── Local database backups ──
+backups/

@@ -285,7 +285,7 @@ export default function Stocktake() {
         />
       </Card>
 
-      <p className="px-1 text-[11px] leading-5 text-muted">
+      <p className="hidden px-1 text-[11px] leading-5 text-muted sm:block">
         يتم أخذ لقطة للوزن المتوقع وقيمة كل صنف عند فتح الجرد. تعديل الأوزان المعدودة متاح ما دام الجرد مفتوحاً (BR-14)،
         وبعد الإغلاق يصبح السجل نهائياً.
       </p>

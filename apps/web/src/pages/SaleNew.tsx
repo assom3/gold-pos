@@ -198,7 +198,8 @@ export default function SaleNew() {
       },
       ounce,
       fxRate,
-      basis,
+      // تجاوز أساس الوزن للصنف (إن وُجد) يُقدَّم على إعداد المحل — كما يفعل الخادم في التقييم
+      item.weightBasis ?? basis,
       mode,
       value,
       rounding,

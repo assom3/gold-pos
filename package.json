@@ -17,6 +17,7 @@
     "test:stress": "node tools/stress-test.mjs",
     "test:integration": "node tools/integration-test.mjs",
     "db:cleanup-qa": "npm run db:cleanup-qa -w @gold/api",
+    "db:backup": "node tools/backup-db.mjs",
     "docs:pdf": "node tools/build-user-guide.mjs",
     "docs:pdf:spec": "node tools/build-spec-pdf.mjs",
     "typecheck": "npm run typecheck -w @gold/pricing && npm run typecheck -w @gold/api && npm run typecheck -w @gold/web",

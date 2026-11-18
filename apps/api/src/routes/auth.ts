@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { ah, ok } from '../lib/http.js';
-import { unauthorized } from '../lib/errors.js';
+import { AppError, badRequest, unauthorized } from '../lib/errors.js';
 import { audit } from '../lib/audit.js';
 import {
   loginAccountLimiter,
@@ -97,12 +97,13 @@ authRouter.post(
     const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
     const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
 
+    // لا نستعمل 401 هنا: الواجهة تعتبره انتهاء جلسة وتُخرج المستخدم من النظام
     const valid = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!valid) throw unauthorized('كلمة المرور الحالية غير صحيحة');
+    if (!valid) throw new AppError(400, 'WRONG_PASSWORD', 'كلمة المرور الحالية غير صحيحة');
 
     assertPasswordPolicy(newPassword, user.username);
     if (await bcrypt.compare(newPassword, user.passwordHash)) {
-      throw unauthorized('كلمة المرور الجديدة مطابقة للحالية، اختر كلمة مختلفة');
+      throw badRequest('كلمة المرور الجديدة مطابقة للحالية، اختر كلمة مختلفة');
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
