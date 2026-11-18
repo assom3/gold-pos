@@ -1,0 +1,422 @@
+// Prisma schema — P43 نظام تسعير ومخزون الذهب
+// المرجع: وثيقة تعريف النظام v0.6 — القسم 11 (نموذج البيانات المبدئي)
+// قاعدة البيانات: MySQL 8.4 (utf8mb4)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── التعدادات ─────────────────────────────
+
+enum Role {
+  OWNER  // المالك
+  SELLER // البائع
+}
+
+enum ItemType {
+  PIECE // قطعة
+  SET   // طقم
+}
+
+enum ItemStatus {
+  AVAILABLE // موجود
+  SOLD      // مباع
+}
+
+enum PurchaseStatus {
+  NEW   // جديد
+  USED  // مستعمل
+  SCRAP // كسر
+}
+
+enum PriceType {
+  OUNCE // سعر الأونصة
+  FX    // سعر الصرف
+}
+
+enum PriceSource {
+  MANUAL
+  API
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum StocktakeType {
+  QUARTERLY   // ربع سنوي
+  SEMIANNUAL  // نصف سنوي
+  ANNUAL      // سنوي
+}
+
+enum StocktakeStatus {
+  OPEN
+  CLOSED
+}
+
+enum ComponentKind {
+  RING      // خاتم
+  BRACELET  // أسورة
+  NECKLACE  // سلسلة
+  EARRING   // حلق
+  ANKLET    // خلخال
+  CHAIN     // حديدة
+  PENDANT   // تعليقة
+  OTHER     // أخرى
+}
+
+enum LookupKind {
+  CATEGORY       // التصنيفات
+  SUPPLIER       // الموردون
+  MANUFACTURER   // المصانع / العلامات
+  COUNTRY        // بلدان الصنع
+  PAYMENT_METHOD // طرق الدفع
+  KARAT          // العيارات
+}
+
+// D-08: أساس وزن الاحتساب
+enum WeightBasis {
+  NET_GOLD     // وزن الذهب الصافي (خصم الحجر والفصوص)
+  TOTAL        // بدون خصم (الإجمالي)
+  MINUS_STONE  // خصم الحجر فقط
+  MINUS_INLAYS // خصم الفصوص فقط
+}
+
+// D-11: طريقة الربح
+enum ProfitMode {
+  PERCENT // نسبة
+  FIXED   // مبلغ ثابت
+  MANUAL  // سعر نهائي يدوي
+}
+
+// D-11: أساس الربح الثابت (لكل غرام أو لكل قطعة)
+enum FixedBasis {
+  GRAM  // لكل غرام من وزن أساس الاحتساب
+  PIECE // لكل قطعة / مكوّن، والطقم يُحصى كل مكوّناته
+}
+
+// D-04: نمط كود الصنف
+enum CodeMode {
+  AUTO
+  MANUAL
+}
+
+// طريقة سعر الصرف المستعملة في البيع
+enum SaleFxMode {
+  CASH    // نقدي
+  CHEQUE  // صك مصدق
+}
+
+// ───────────────────────────── المستخدمون ─────────────────────────────
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(160)
+  username     String   @unique @db.VarChar(60)
+  passwordHash String   @db.VarChar(255)
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions          Session[]
+  priceUpdates      PriceUpdate[]
+  sales             Sale[]       @relation("SaleSeller")
+  cancellations     Sale[]       @relation("SaleCancelledBy")
+  stocktakesOpened  Stocktake[]  @relation("StocktakeOpenedBy")
+  stocktakesClosed  Stocktake[]  @relation("StocktakeClosedBy")
+  auditLogs         AuditLog[]
+
+  @@index([role, active])
+}
+
+model Session {
+  id         String   @id @db.VarChar(64) // sha256(token)
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  ip         String?  @db.VarChar(64)
+  userAgent  String?  @db.VarChar(255)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ───────────────────────────── الأصناف ─────────────────────────────
+
+model Item {
+  id       Int      @id @default(autoincrement())
+  type     ItemType
+  code     String   @unique @db.VarChar(40)
+  name     String   @db.VarChar(160)
+  karat    Int
+
+  // التصنيف والمقاس
+  categoryId Int?
+  category   Lookup? @relation("ItemCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  size       String? @db.VarChar(40)
+
+  // الأوزان (D-07)
+  totalWeight   Decimal  @db.Decimal(10, 3)
+  stoneWeight   Decimal  @default(0) @db.Decimal(10, 3)
+  stonePrice    Decimal? @db.Decimal(12, 2) // D-09: سعر خاص للحجر أو لا شيء
+  inlaysWeight  Decimal  @default(0) @db.Decimal(10, 3)
+  netGoldWeight Decimal  @db.Decimal(10, 3) // محسوب ومحفوظ للقراءة
+
+  // D-06: الكمية فقط للقطع المتطابقة
+  quantity Int @default(1)
+
+  // سعر الشراء مع سعر الصرف المستعمل وقت الشراء (D-05)
+  purchaseGramPrice    Decimal? @db.Decimal(14, 4) // سعر الغرام وقت الشراء بعملة الشراء
+  purchasePrice        Decimal  @db.Decimal(14, 2) // إجمالي القطعة بعملة الشراء (غرام × وزن الذهب الصافي)
+  purchaseCurrency     String   @default("USD") @db.VarChar(3)
+  purchaseFxRate       Decimal  @db.Decimal(14, 6)
+  purchaseCostDinar    Decimal  @db.Decimal(14, 2) // سعر الشراء موحّد بالعملة المحلية
+
+  status         ItemStatus     @default(AVAILABLE)
+  purchaseStatus PurchaseStatus @default(NEW)
+
+  // تجاوز إعداد المحل لأساس الوزن لصنف معين (D-08)
+  weightBasis WeightBasis?
+
+  supplierId Int?
+  supplier   Lookup? @relation("ItemSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  countryId  Int?
+  country    Lookup? @relation("ItemCountry", fields: [countryId], references: [id], onDelete: SetNull)
+
+  // المصنّع: علاقة بقائمة المصانع + نص مرآة للتوافق مع البيانات القديمة
+  manufacturerId Int?
+  manufacturerLookup Lookup? @relation("ItemManufacturer", fields: [manufacturerId], references: [id], onDelete: SetNull)
+  manufacturer String? @db.VarChar(160)
+  description  String? @db.Text
+  notes        String? @db.Text
+
+  addedAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  components     SetComponent[]
+  saleItems      SaleItem[]
+  stocktakeLines StocktakeLine[]
+
+  @@index([type, status])
+  @@index([karat])
+  @@index([addedAt])
+}
+
+// مكونات الطقم (D-10)
+model SetComponent {
+  id        Int  @id @default(autoincrement())
+  setItemId Int
+  setItem   Item @relation(fields: [setItemId], references: [id], onDelete: Cascade)
+
+  kind        ComponentKind
+  name        String? @db.VarChar(120)
+  karat       Int
+  weight      Decimal @db.Decimal(10, 3)
+  stoneWeight Decimal @default(0) @db.Decimal(10, 3)
+  stonePrice  Decimal? @db.Decimal(12, 2)
+  inlaysWeight Decimal @default(0) @db.Decimal(10, 3)
+  netGoldWeight Decimal @db.Decimal(10, 3)
+  notes       String? @db.Text
+  sortOrder   Int     @default(0)
+
+  @@index([setItemId])
+}
+
+// ───────────────────────────── الأسعار ─────────────────────────────
+
+// سجل كل تحديث لسعر الأونصة أو سعر الصرف (D-12)
+model PriceUpdate {
+  id        Int         @id @default(autoincrement())
+  type      PriceType
+  value     Decimal     @db.Decimal(16, 6)
+  source    PriceSource @default(MANUAL)
+  userId    Int
+  user      User        @relation(fields: [userId], references: [id])
+  createdAt DateTime    @default(now())
+
+  @@index([type, createdAt])
+}
+
+// ───────────────────────────── المبيعات ─────────────────────────────
+
+model Sale {
+  id          Int      @id @default(autoincrement())
+  invoiceNo   String   @unique @db.VarChar(40)
+  sellerId    Int
+  seller      User     @relation("SaleSeller", fields: [sellerId], references: [id])
+
+  paymentMethodId Int?
+  paymentMethod   Lookup? @relation("SalePaymentMethod", fields: [paymentMethodId], references: [id], onDelete: SetNull)
+
+  total  Decimal    @db.Decimal(14, 2) // D-30: السعر النهائي فقط
+  status SaleStatus @default(COMPLETED)
+
+  // سياسة الربح والتقريب المستعملة في هذه الفاتورة (اختيارية للفواتير القديمة)
+  profitMode   ProfitMode?
+  profitValue  Decimal?    @db.Decimal(10, 2)
+  fixedBasis   FixedBasis? // أساس الربح الثابت — اختياري للفواتير القديمة
+  roundingStep Int?
+
+  // سعر الصرف المستعمل في البيع — يختلف بين الكاش والصك المصدق
+  fxMode SaleFxMode?
+  fxRate Decimal?    @db.Decimal(14, 6)
+
+  // D-25: بيانات الزبون اختيارية
+  customerName  String? @db.VarChar(160)
+  customerPhone String? @db.VarChar(40)
+
+  // D-13 / BR-13: إلغاء البيع للمالك فقط
+  cancelReason  String?   @db.Text
+  cancelledAt   DateTime?
+  cancelledById Int?
+  cancelledBy   User?     @relation("SaleCancelledBy", fields: [cancelledById], references: [id])
+
+  createdAt DateTime   @default(now())
+  items     SaleItem[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model SaleItem {
+  id    Int  @id @default(autoincrement())
+  saleId Int
+  sale   Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  itemId Int
+  item   Item @relation(fields: [itemId], references: [id])
+
+  quantity  Int     @default(1)
+  unitPrice Decimal @db.Decimal(14, 2)
+  lineTotal Decimal @db.Decimal(14, 2)
+
+  @@index([saleId])
+  @@index([itemId])
+}
+
+// ───────────────────────────── الجرد ─────────────────────────────
+
+model Stocktake {
+  id     Int             @id @default(autoincrement())
+  type   StocktakeType
+  status StocktakeStatus @default(OPEN)
+
+  openedAt   DateTime @default(now())
+  openedById Int
+  openedBy   User     @relation("StocktakeOpenedBy", fields: [openedById], references: [id])
+
+  closedAt   DateTime?
+  closedById Int?
+  closedBy   User?     @relation("StocktakeClosedBy", fields: [closedById], references: [id])
+
+  notes String? @db.Text
+  lines StocktakeLine[]
+
+  @@index([status])
+  @@index([openedAt])
+}
+
+model StocktakeLine {
+  id          Int       @id @default(autoincrement())
+  stocktakeId Int
+  stocktake   Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+
+  itemId   Int?
+  item     Item?  @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  itemCode String @db.VarChar(40) // لقطة وقت فتح الجرد
+
+  expectedWeight Decimal  @db.Decimal(10, 3)
+  countedWeight  Decimal? @db.Decimal(10, 3)
+  weightDiff     Decimal? @db.Decimal(10, 3)
+  valueAtOpen    Decimal  @db.Decimal(14, 2)
+  present        Boolean  @default(true)
+
+  @@index([stocktakeId])
+}
+
+// ───────────────────────────── الإعدادات والقوائم ─────────────────────────────
+
+model Setting {
+  id Int @id @default(1)
+
+  shopName String @default("محل الذهب") @db.VarChar(160)
+  currency String @default("LYD") @db.VarChar(8)
+
+  // D-04
+  codeMode CodeMode @default(AUTO)
+
+  // D-08: خانتا إعداد المحل
+  deductStone  Boolean     @default(true)
+  deductInlays Boolean     @default(true)
+  weightBasis  WeightBasis @default(NET_GOLD)
+
+  // D-11
+  profitMode  ProfitMode  @default(PERCENT)
+  profitValue Decimal     @default(5) @db.Decimal(10, 2)
+  fixedBasis  FixedBasis @default(PIECE)
+
+  // D-12
+  fxSource PriceSource @default(MANUAL)
+
+  roundingStep     Int @default(0) // 0 / 5 / 10
+  priceStaleHours  Int @default(2)
+
+  showCostToSeller   Boolean @default(false)
+  sellerCanAddItems  Boolean @default(true)
+  defaultKarat       Int     @default(21)
+
+  updatedAt DateTime @updatedAt
+}
+
+model Lookup {
+  id        Int        @id @default(autoincrement())
+  kind      LookupKind
+  value     String     @db.VarChar(120)
+  sortOrder Int        @default(0)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+
+  itemsAsCategory     Item[] @relation("ItemCategory")
+  itemsAsSupplier     Item[] @relation("ItemSupplier")
+  itemsAsManufacturer Item[] @relation("ItemManufacturer")
+  itemsAsCountry      Item[] @relation("ItemCountry")
+  salesAsPayment      Sale[] @relation("SalePaymentMethod")
+
+  @@unique([kind, value])
+  @@index([kind, active])
+}
+
+// ───────────────────────────── سجل التعديلات ─────────────────────────────
+
+model AuditLog {
+  id       Int   @id @default(autoincrement())
+  userId   Int?
+  user     User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action   String  @db.VarChar(60)
+  entity   String  @db.VarChar(60)
+  entityId String? @db.VarChar(60)
+
+  oldValue Json?
+  newValue Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// عدادات توليد الأكواد وأرقام الفواتير (D-04)
+model Sequence {
+  name  String @id @db.VarChar(40)
+  value Int    @default(0)
+}

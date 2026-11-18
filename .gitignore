@@ -1,0 +1,29 @@
+# ── Node ──
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ── Environment ──
+.env
+.env.*
+!.env.example
+
+# ── Portable MySQL (binary + data — do not commit) ──
+tools/mysql/
+tools/download/
+
+# ── Logs & temp ──
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# ── Editors / OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Tests & builds ──
+coverage/
+.vite/

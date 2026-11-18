@@ -1,0 +1,38 @@
+{
+  "name": "gold-pos",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "description": "نظام تسعير ومخزون الذهب — P43",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c yellow,cyan \"npm run dev -w @gold/api\" \"npm run dev -w @gold/web\"",
+    "dev:api": "npm run dev -w @gold/api",
+    "dev:web": "npm run dev -w @gold/web",
+    "build": "npm run build -w @gold/api && npm run build -w @gold/web",
+    "test": "npm run test -w @gold/pricing",
+    "test:stress": "node tools/stress-test.mjs",
+    "test:integration": "node tools/integration-test.mjs",
+    "db:cleanup-qa": "npm run db:cleanup-qa -w @gold/api",
+    "docs:pdf": "node tools/build-user-guide.mjs",
+    "typecheck": "npm run typecheck -w @gold/pricing && npm run typecheck -w @gold/api && npm run typecheck -w @gold/web",
+    "db:generate": "npm run db:generate -w @gold/api",
+    "db:push": "npm run db:push -w @gold/api",
+    "db:migrate": "npm run db:migrate -w @gold/api",
+    "db:seed": "npm run db:seed -w @gold/api",
+    "db:studio": "npm run db:studio -w @gold/api",
+    "db:reset": "npm run db:reset -w @gold/api"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true
+  }
+}
