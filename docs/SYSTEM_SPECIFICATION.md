@@ -181,8 +181,10 @@ Gold/
 | `FX_API_URL` | فارغ | اختياري | محجوز |
 | `FX_API_KEY` | فارغ | اختياري | محجوز |
 | `LOCAL_CURRENCY` | `LYD` | نص | عملة المحل التي تُوحَّد إليها التكاليف |
+| `SEED_OWNER_PASSWORD` | غير مهيأ (تطوير: `Admin@2026`) | اختياري في التطوير، إلزامي في الإنتاج | كلمة مرور `admin` عند `db:seed`. |
+| `SEED_SELLER_PASSWORD` | غير مهيأ (تطوير: `Seller@2026`) | اختياري في التطوير، إلزامي في الإنتاج | كلمة مرور `seller` عند `db:seed`. |
 
-> `apps/api/.env.example` يحتوي على قيم نائبة فقط. لا تُنسخ مفاتيح أو كلمات مرور حقيقية إلى الوثائق ولا إلى المستودع العام. ملف `.env` مستثنى من git عبر `.gitignore`.
+> `apps/api/.env.example` يحتوي على قيم نائبة فقط (14 مفتاحاً، بلا `SEED_*` وبلا `TRUST_PROXY`). `TRUST_PROXY` مدعوم في `config.ts` لكنه غير مدرج في المثال؛ أضفه يدوياً عند العمل خلف وكيل. لا تُنسخ مفاتيح أو كلمات مرور حقيقية إلى الوثائق ولا إلى المستودع العام. ملف `.env` مستثنى من git عبر `.gitignore`.
 
 ### 2.6 الأوامر المعتمدة
 
@@ -198,6 +200,7 @@ Gold/
 | `npm.cmd run test:stress` | فحص حِمل وتزامن على المسارات الحساسة |
 | `npm.cmd run db:cleanup-qa` | حذف بيانات الاختبار التي تحمل بادئة `QA-` |
 | `npm.cmd run docs:pdf` | تحديث `docs/USER_MANUAL.pdf` من دليل Markdown عند الحاجة |
+| `npm.cmd run docs:pdf:spec` | تحديث `docs/SYSTEM_SPECIFICATION.pdf` من هذا المستند |
 | `npm.cmd run db:generate` | توليد Prisma Client |
 | `npm.cmd run db:push` | مزامنة المخطط مع MySQL (المسار المعتمد حالياً) |
 | `npm.cmd run db:migrate` | `prisma migrate dev --name init` لإنشاء أول ترحيل عند الحاجة |
@@ -468,9 +471,9 @@ Gold/
 | `Lookup / KARAT` | `18`, `21`, `24` |
 | `Lookup / SUPPLIER`, `MANUFACTURER` | فارغان؛ يُضيفهما المستخدم من الواجهة |
 | `User` | `admin` / `Admin@2026` (`OWNER`)، `seller` / `Seller@2026` (`SELLER`)؛ التجزئة بـbcrypt cost 12. |
-| `Sequence` | `ITEM_CODE=0`, `INVOICE=0`, `STOCKTAKE=0` |
+| `Sequence` | `ITEM_CODE=0`, `ITEM_CODE_PIECE=0`, `ITEM_CODE_SET=0`, `INVOICE=0`, `STOCKTAKE_REF=0`, `STOCKTAKE=0` |
 
-> الـseed idempotent: يستخدم `upsert` ولا يغيّر قيماً موجودة. غيّر كلمتي المرور فور أول دخول.
+> الـseed idempotent: يستخدم `upsert` ولا يغيّر قيماً موجودة. غيّر كلمتي المرور فور أول دخول. في `NODE_ENV=production` يرفض `db:seed` العمل إذا لم تُضبط `SEED_OWNER_PASSWORD` و`SEED_SELLER_PASSWORD` (رسالة عربية صريحة)؛ الافتراضيات `Admin@2026`/`Seller@2026` للتطوير فقط. المتغيران يُقرآن عند إنشاء الصف فقط، و`upsert` لا يُدير كلمة مرور موجودة — استخدم `POST /api/users/:id/password` لتغييرها.
 
 ---
 
@@ -484,6 +487,7 @@ Gold/
 - الترقيم الافتراضي: `page=1`, `pageSize=20`، والحد الأعلى `pageSize=200` في المسارات التي تستعمل `paging()`.
 - كل `/api` يُعيد `Cache-Control: no-store` و`Pragma: no-cache`.
 - الأخطاء الشائعة: `BAD_REQUEST 400`, `UNAUTHORIZED 401`, `FORBIDDEN 403`, `NOT_FOUND 404`, `CONFLICT 409`, `VALIDATION_ERROR 422`, `RATE_LIMITED 429`, `BAD_GATEWAY 502`, `DATABASE_UNAVAILABLE 503`, `INTERNAL 500`, `INVALID_JSON 400`, `PAYLOAD_TOO_LARGE 413`, `DUPLICATE 409`, `RELATION_CONFLICT 409`.
+- المخططات الحرفية لكل جسم طلب وقواعد الاستجابة الدقيقة في الملحق 14؛ ترتيب الـmiddleware والجلسات والحدود في الملحق 15.
 
 ### 4.2 مصفوفة الوصول
 
@@ -666,11 +670,167 @@ Gold/
 
 ## 5. الخوارزميات الدقيقة
 
+### 5.0 الواجهة البرمجية لحزمة `@gold/pricing` (مرجع إعادة البناء)
+
+`packages/pricing/src/index.ts` يعيد تصدير `types.js`, `errors.js`, `money.js`, `karat.js`, `engine.js` كاملة. لا توجد خطوة بناء منفصلة؛ الحزمة `private`, `type: module`, وتُستهلك كـTypeScript مباشرة عبر `exports["."] = "./src/index.ts"` و`types = "./src/index.ts"` تحت `moduleResolution: Bundler`. التوقيعات الدقيقة الواجب تطابقها:
+
+```ts
+type Numeric = Decimal | number | string;
+function toDecimal(value: Numeric | null | undefined, fallback: Numeric = 0): Decimal;
+function toMoney(value: Numeric): number;                  // خانتان، ROUND_HALF_UP
+function toWeight(value: Numeric): number;                 // ثلاث خانات، ROUND_HALF_UP
+function roundToStep(value: Numeric, step: number): Decimal; // يُعيد Decimal لا number
+
+const TROY_OUNCE_GRAMS: number; // 31.1035
+const KARAT_BASE: number;       // 24
+function gramPrice24(ounceUsd: Numeric, fxRate: Numeric): Decimal;
+function karatFactor(karat: number): Decimal;
+function gramPriceForKarat(ounceUsd: Numeric, fxRate: Numeric, karat: number): Decimal;
+function buildPriceTable(ounceUsd: Numeric, fxRate: Numeric, karats: number[]): PriceTable;
+
+function computeWeights(input: WeightsInput): WeightBreakdown;
+function computeItemPrice(input: PricingInput): PricingResult;
+```
+
+الأنواع المُصدَّرة (مطابقة لـ`src/types.ts` و`src/errors.ts`):
+
+```ts
+export type WeightBasis = 'NET_GOLD' | 'TOTAL' | 'MINUS_STONE' | 'MINUS_INLAYS';
+export type ProfitMode  = 'PERCENT' | 'FIXED' | 'MANUAL';
+export type FixedBasis  = 'GRAM' | 'PIECE';
+
+export interface KaratPrice {
+  karat: number;
+  factor: number;
+  pricePerGram: number;
+  pricePerGramRaw: number;
+}
+export interface PriceTable {
+  ounceUsd: number;
+  fxRate: number;
+  gramPrice24: number;
+  gramPrice24Raw: number;
+  rows: KaratPrice[];
+}
+export interface WeightsInput {
+  totalWeight: number;
+  stoneWeight?: number;
+  inlaysWeight?: number;
+  basis: WeightBasis;
+  stoneHasPrice?: boolean;
+}
+export interface WeightBreakdown {
+  total: number;
+  stone: number;
+  inlays: number;
+  netGold: number;
+  basisWeight: number;
+  basis: WeightBasis;      // مُشتق من الخصم الفعلي بعد BR-10، وليس بالضرورة input.basis
+  stoneDeducted: boolean;
+  inlaysDeducted: boolean;
+}
+export interface PricingInput {
+  ounceUsd: number;
+  fxRate: number;
+  karat: number;
+  totalWeight: number;
+  stoneWeight?: number;
+  inlaysWeight?: number;
+  stonePrice?: number | null;
+  basis: WeightBasis;
+  profitMode: ProfitMode;
+  profitValue?: number;    // افتراضي 0
+  fixedBasis?: FixedBasis; // افتراضي PIECE
+  pieceCount?: number;     // افتراضي 1؛ يُستعمل فقط مع FIXED+PIECE
+  manualPrice?: number;
+  roundingStep?: number;   // افتراضي 0
+  cost?: number | null;
+}
+export interface PricingResult {
+  ounceUsd: number;
+  fxRate: number;
+  karat: number;
+  karatFactor: number;
+  gramPrice24: number;
+  gramPrice24Raw: number;
+  gramPriceKarat: number;
+  gramPriceKaratRaw: number;
+  weights: WeightBreakdown;
+  goldValue: number;
+  goldValueRaw: number;
+  stoneValue: number;                 // لا يوجد stoneValueRaw في النتيجة
+  subtotal: number;
+  subtotalRaw: number;
+  profit: {
+    mode: ProfitMode;
+    fixedBasis: FixedBasis;
+    units: number;  // PIECE: القطع الفعّالة؛ GRAM: وزن الأساس (3 خانات)؛ PERCENT/MANUAL: 1
+    input: number;  // MANUAL: manualPrice؛ غيره: profitValue ?? 0
+    amount: number;
+  };
+  beforeRounding: number;
+  roundingStep: number;
+  roundingDelta: number;
+  finalPrice: number;
+  cost: number | null;
+  margin: number | null;
+  belowCost: boolean;
+}
+export type PricingErrorCode =
+  | 'OUNCE_INVALID' | 'FX_INVALID' | 'KARAT_INVALID' | 'WEIGHT_INVALID'
+  | 'WEIGHT_NEGATIVE' | 'STONE_TOO_HEAVY' | 'PROFIT_INVALID'
+  | 'MANUAL_PRICE_INVALID' | 'ROUNDING_INVALID' | 'INVALID_NUMBER';
+
+class PricingError extends Error {
+  readonly code: PricingErrorCode;
+  readonly details?: Record<string, unknown>;
+  constructor(code: PricingErrorCode, message: string, details?: Record<string, unknown>);
+}
+```
+
+ترتيب التحقق وأول خطأ يُرمى (مهم لإعادة إنتاج رسائل الاختبارات):
+
+**`computeWeights`:**
+1. تحويل الأوزان إلى Decimal ⇒ `INVALID_NUMBER` إن كانت غير رقمية.
+2. `basis` خارج القيم الأربع ⇒ `WEIGHT_INVALID`.
+3. `total ≤ 0` ⇒ `WEIGHT_INVALID`.
+4. `stone < 0` أو `inlays < 0` ⇒ `WEIGHT_NEGATIVE`.
+5. `stone + inlays ≥ total` ⇒ `STONE_TOO_HEAVY`.
+6. BR-10 ثم `basisWeight ≤ 0` ⇒ `WEIGHT_INVALID`.
+
+**`computeItemPrice`:**
+1. `toDecimal(ounceUsd)` و`toDecimal(fxRate)` ⇒ `INVALID_NUMBER`.
+2. `karatFactor(karat)` ⇒ `KARAT_INVALID` (قبل فحص الأونصة والصرف).
+3. `toDecimal(stonePrice)` إن وُجد ⇒ `INVALID_NUMBER`.
+4. `stonePrice < 0` ⇒ `INVALID_NUMBER` (قبل فحص الأوزان).
+5. `computeWeights(...)` ⇒ أخطاء الأوزان أعلاه.
+6. `gramPrice24(...)` ⇒ `OUNCE_INVALID` / `FX_INVALID` (بعد الأوزان).
+7. فحص الربح ⇒ `PROFIT_INVALID` / `MANUAL_PRICE_INVALID`.
+8. `roundToStep(...)` ⇒ `ROUNDING_INVALID`.
+
+الرسائل الحرفية:
+
+| الرمز | الرسالة |
+|---|---|
+| `INVALID_NUMBER` | `قيمة رقمية غير صالحة: ${value}`؛ ولسعر الحجر السالب `سعر الحجر لا يمكن أن تكون سالباً` |
+| `WEIGHT_INVALID` | `أساس وزن غير معروف: ${basis}` أو `الوزن الإجمالي يجب أن يكون أكبر من صفر` أو `وزن أساس الاحتساب يجب أن يكون أكبر من صفر` |
+| `WEIGHT_NEGATIVE` | `أوزان الحجر والفصوص لا يمكن أن تكون سالبة` |
+| `STONE_TOO_HEAVY` | `مجموع وزن الحجر والفصوص يجب أن يكون أقل من الوزن الإجمالي` |
+| `KARAT_INVALID` | `عيار غير صالح: ${karat}` |
+| `OUNCE_INVALID` | `سعر الأونصة يجب أن يكون أكبر من صفر` |
+| `FX_INVALID` | `سعر الصرف يجب أن يكون أكبر من صفر` |
+| `PROFIT_INVALID` | `نسبة الربح لا يمكن أن تكون سالبة` أو `مبلغ الربح لا يمكن أن يكون سالباً` أو `طريقة ربح غير معروفة: ${mode}` |
+| `MANUAL_PRICE_INVALID` | `السعر اليدوي مطلوب عند اختيار السعر النهائي اليدوي` أو `السعر النهائي لا يمكن أن يكون سالباً` |
+| `ROUNDING_INVALID` | `خطوة التقريب غير صالحة` |
+
+> إعدادات الحزمة: `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `exactOptionalPropertyTypes: false`, `noEmit`. تعتمد على `decimal.js ^10.6.0` المُعلَن في `apps/api` و`apps/web` ويُستورد بالـhoist؛ السكربتات: `test`, `test:watch`, `typecheck`.
+
 ### 5.1 الدقة الحسابية
 
 - `decimal.js` مع `precision = 28` و`ROUND_HALF_UP`.
 - `toMoney` ⇒ خانتان عشريتان؛ `toWeight` ⇒ ثلاث خانات؛ `roundToStep` كما في 5.6.
-- الحسابات الوسيطة تُبقى خاماً (`...Raw`) ولا تُقرَّب قبل النهاية. التحويل إلى `number` عند الإدخال/الإخراج فقط.
+- `toDecimal` يعامل `null` و`undefined` و`''` كـ`fallback` (الافتراضي `0`) قبل أي تحويل، ويرمي `INVALID_NUMBER` لكل قيمة غير منتهية أو غير قابلة للتحويل.
+- **تنبيه الدقة:** `computeWeights` يُقرّب `total` و`stone` و`inlays` و`netGold` و`basisWeight` إلى **3 خانات** قبل الإرجاع؛ و`computeItemPrice` يبني `basisWeightRaw = toDecimal(weights.basisWeight)` من هذه القيمة المقرَّبة، ثم يحسب `goldValueRaw` و`subtotalRaw` ومبلغ الربح منها. «الخام» هنا يعني بلا تقريب السعر النهائي، لا بلا تقريب الوزن؛ لا تُمرَّر أوزان بأكثر من 3 خانات إلى الحساب الوسيط. التحويل إلى `number` عند الإدخال/الإخراج فقط.
 
 ### 5.2 سعر الغرام
 
@@ -682,6 +842,10 @@ gramPriceKarat     = gramPrice24 × karatFactor(K)
 ```
 
 مثال: `2000 × 6 = 12000`؛ `12000 ÷ 31.1035 = 385.81` لعيار 24؛ `× 0.875 = 337.58` لعيار 21؛ `× 0.75 = 289.36` لعيار 18.
+
+`karatFactor(k)` يقبل أي عدد منتهٍ في `0 < k ≤ 24`، بما في ذلك الكسور (مثل `21.5 ⇒ 21.5/24`)؛ `NaN` و`Infinity` و`0` والسالب و`>24` ⇒ `KARAT_INVALID`. قيد «عدد صحيح 1–24» مفروض في طبقة Prisma/Zod فقط. `gramPrice24` يرفض الأونصة أو الصرف `≤ 0` فقط؛ الحدود 100–100000 و0.000001–10000 مفروضة في API لا في المحرك. الثابتان `TROY_OUNCE_GRAMS = 31.1035` و`KARAT_BASE = 24` مُصدَّران من الحزمة.
+
+`buildPriceTable(ounceUsd, fxRate, karats)` يحسب `gram24` مرة واحدة، ثم `unique = [...new Set(karats)].sort((a,b) => a-b)`؛ لذلك الصفوف مرتبة تصاعدياً وبلا تكرار. كل صف يحوي `karat`, `factor = karatFactor(karat).toNumber()`, `pricePerGram = toMoney(gram24 × factor)`, `pricePerGramRaw = (gram24 × factor).toNumber()`. الحقلان `ounceUsd`/`fxRate` يُعادان عبر `toDecimal(...).toNumber()`. مثال: `buildPriceTable(2000, 6, [21,18,24,18])` ⇒ `rows.karat = [18,21,24]` و`pricePerGram = [289.36, 337.58, 385.81]`.
 
 ### 5.3 الأوزان (D-07 / D-08 / BR-10)
 
@@ -707,7 +871,20 @@ netGold = total − stone − inlays
 basisWeight = total − (stoneDeducted ? stone : 0) − (inlaysDeducted ? inlays : 0)
 ```
 
-إذا كانت `basisWeight ≤ 0` ⇒ `PricingError`. الأخطاء المعرفة: `WEIGHT_INVALID`, `WEIGHT_NEGATIVE`, `STONE_TOO_HEAVY`, `INVALID_NUMBER`, `KARAT_INVALID`, `OUNCE_INVALID`, `FX_INVALID`, `PROFIT_INVALID`, `MANUAL_PRICE_INVALID`, `ROUNDING_INVALID`.
+إذا كانت `basisWeight ≤ 0` ⇒ `PricingError`. الأخطاء المعرفة: `WEIGHT_INVALID`, `WEIGHT_NEGATIVE`, `STONE_TOO_HEAVY`, `INVALID_NUMBER`, `KARAT_INVALID`, `OUNCE_INVALID`, `FX_INVALID`, `PROFIT_INVALID`, `MANUAL_PRICE_INVALID`, `ROUNDING_INVALID` (الرموز والرسائل وترتيب الرمي في 5.0).
+
+حقل `WeightBreakdown.basis` **ليس** بالضرورة `input.basis`: يُشتق من الخصم الفعلي بعد BR-10 —
+
+```
+(stone ∧ inlays) ⇒ NET_GOLD
+stone فقط        ⇒ MINUS_STONE
+inlays فقط       ⇒ MINUS_INLAYS
+لا شيء           ⇒ TOTAL
+```
+
+مثال: `basis:'TOTAL'` مع `stonePrice:150` ⇒ `stoneDeducted=true`, `inlaysDeducted=false`, `basis:'MINUS_STONE'`, `basisWeight=9.200`. حتى `stoneHasPrice:true` مع `stoneWeight=0` يُغيّر `basis` المُعاد إلى `MINUS_STONE`.
+
+`computeWeights` لا يعرف `stonePrice`؛ يستقبل `stoneHasPrice?: boolean` ويطبّق BR-10 مباشرة. أمّا `computeItemPrice` فيستقبل `stonePrice?: number | null` ويشتق منه: `null/undefined/0 ⇒ false`، و`>0 ⇒ true`، والسالب ⇒ `INVALID_NUMBER`. على المستدع المباشر لـ`computeWeights` تمرير العلم بنفسه.
 
 ### 5.4 قيمة الصنف قبل الربح
 
@@ -722,25 +899,29 @@ subtotal   = goldValue + stoneValue
 | النمط | الحساب |
 |---|---|
 | `PERCENT` | `profit = subtotal × profitValue ÷ 100`؛ `total = subtotal + profit` |
-| `FIXED` + `fixedBasis=PIECE` | `units = max(1, floor(pieceCount || 1))`؛ `profit = profitValue × units` |
-| `FIXED` + `fixedBasis=GRAM` | `units = basisWeight` (وزن الأساس الخام بدقة 3 خانات)؛ `profit = profitValue × units` |
+| `FIXED` + `fixedBasis=PIECE` | `units = Math.max(1, Math.floor(pieceCount || 1))`؛ `profit = profitValue × units` |
+| `FIXED` + `fixedBasis=GRAM` | `units = basisWeight` (وزن الأساس بدقة 3 خانات)؛ `profit = profitValue × units` |
 | `MANUAL` | `total = manualPrice`؛ `profit = manualPrice − subtotal` |
 
-القيم الافتراضية: `fixedBasis = 'PIECE'` و`pieceCount = 1` عند غيابهما، توافقاً مع السلوك السابق. النتيجة تُعيد `profit.fixedBasis` و`profit.units` و`profit.amount` و`profit.input`. الربح الثابت السالب مرفوض في كلا الأساسين.
+القيم الافتراضية عند غياب الحقول: `fixedBasis='PIECE'`، `pieceCount=1`، `profitValue=0`، `roundingStep=0`. في `PIECE` يُقتطع `pieceCount` للأسفل (`3.7 ⇒ 3`)، و`0` أو السالب أو `NaN` أو الغياب ⇒ `1`. `pieceCount` يُتجاهل تماماً في `GRAM` وفي باقي الأنماط. الربح الثابت السالب مرفوض بـ`PROFIT_INVALID` في كلا الأساسين، ونمط ربح خارج `PERCENT|FIXED|MANUAL` ⇒ `PROFIT_INVALID` بالرسالة `طريقة ربح غير معروفة: <mode>`.
 
-**الطقم:** المحرك لا يعرف ما هو الطقم؛ يُرسل له `pieceCount = عدد المكوّنات ذات الوزن > 0` (الحد الأدنى 1). معاينة الواجهة تحسب هذا العدد من `components.filter(c => c.weight > 0).length`. لذلك «100 لكل قطعة» على طقم من ثلاثة مكوّنات تعني 300، بينما «100 لكل غرام» تعني `100 × مجموع أوزان أساس المكوّنات`.
+كائن `profit` في النتيجة يحوي **دائماً**: `mode` (النمط)، `fixedBasis` (الافتراضي `PIECE` حتى في `PERCENT`/`MANUAL`)، `units` (القطع الفعّالة في `PIECE`، وزن الأساس في `GRAM`، و`1` في `PERCENT`/`MANUAL`)، `input` (`manualPrice` في `MANUAL` وإلا `profitValue ?? 0`)، و`amount`. يُعاد `roundingStep` في النتيجة كـ0 لأي قيمة غير موجبة (القيم السالبة تُرفض أصلاً بـ`ROUNDING_INVALID`).
+
+**الطقم:** لا توجد دالة خاصة بالأطقم داخل `@gold/pricing`. للتقييم يُستدعى `computeItemPrice` لكل مكوّن على حدة بعياره ووزنه؛ أمّا `PIECE` فيُمرَّر `pieceCount = components.filter(c => c.weight > 0).length` (الحد الأدنى 1). معاينة الواجهة تحسب هذا العدد بالطريقة نفسها. لذلك «100 لكل قطعة» على طقم من 3 مكوّنات = 300، و«100 لكل غرام» = `100 ×` وزن أساس المكوّن (لا مجموع أوزان كل المكوّنات في استدعاء واحد، لأن المحرك لا يجمع المكوّنات).
 
 ### 5.6 التقريب والتكلفة
 
 ```
-roundToStep(x, 0)  = round2(x)                         // نصف لأعلى
-roundToStep(x, s)  = round2( round0(x / s) × s )       // s ∈ {5, 10}
+roundToStep(x, 0)  = round2(x)                         // نصف لأعلى، كـDecimal
+roundToStep(x, s)  = round2( round0(x / s) × s )       // أي s > 0 مقبول في المحرك
 beforeRounding     = round2(total قبل التقريب)
-finalPrice         = roundToStep(total, roundingStep)
+finalPrice         = roundToStep(total, roundingStep)  // ثم .toNumber()
 roundingDelta      = finalPrice − beforeRounding
-margin             = finalPrice − cost      (إن وُجدت التكلفة)
-belowCost          = finalPrice < cost
+margin             = toMoney(finalPrice − cost)        // إن وُجدت التكلفة
+belowCost          = cost !== null && finalPrice < cost
 ```
+
+`roundToStep` يرفض `step` غير المنتهي أو الأقل من صفر بـ`ROUNDING_INVALID`. القيم الموجبة كلها مقبولة في المحرك، وليس فقط 5 و10؛ حصرها في `{0,5,10}` مفروض في طبقة الإعدادات/API. `computeItemPrice` يحوّل نتيجة `roundToStep` إلى `number` عبر `.toNumber()`. `cost` يُقرَّب بـ`toMoney` عند الإخراج، و`belowCost` يُحسب بعد تقريب السعر النهائي.
 
 التقريب يُطبَّق **مرة واحدة** بعد جمع الحجر والربح، وبعد ضرب الربح الثابت في عدد الوحدات.
 
@@ -841,12 +1022,12 @@ notRegistered = أصناف AVAILABLE غير موجودة في لقطة الجر�
 
 ### 6.1 التشغيل الأول
 
-1. `powershell -ExecutionPolicy Bypass -File .\tools\mysql-init.ps1`
+1. جهّز `tools/mysql/` (راجع 13.5) وعدّل المسارات المطلقة في السكربتات و`my.ini` إن اختلف جهازك عن `C:\Users\D047\Gold`. ثم `powershell -ExecutionPolicy Bypass -File .\tools\mysql-init.ps1`.
 2. `npm.cmd install`
-3. `copy apps\api\.env.example apps\api\.env` ثم ضبط `DATABASE_URL` و`SESSION_SECRET` (والمفتاح اختيارياً).
+3. `copy apps\api\.env.example apps\api\.env` ثم ضبط `DATABASE_URL` (= `mysql://gold:Gold@Dev2026@127.0.0.1:3306/gold_pos` في التطوير) و`SESSION_SECRET` (والمفتاح اختيارياً). في الإنتاج أضف `SEED_OWNER_PASSWORD` و`SEED_SELLER_PASSWORD`.
 4. `npm.cmd run db:generate` ثم `npm.cmd run db:push` ثم `npm.cmd run db:seed`.
 5. `npm.cmd run dev`؛ افتح `http://localhost:5173` وتحقق من `/api/health`.
-6. سجّل الدخول بـ`admin / Admin@2026` وغيّر كلمتي المرور.
+6. سجّل الدخول بـ`admin / Admin@2026` و`seller / Seller@2026` في التطوير، وغيّر كلمتي المرور فوراً.
 
 ### 6.2 تحديث الأسعار
 
@@ -904,7 +1085,7 @@ notRegistered = أصناف AVAILABLE غير موجودة في لقطة الجر�
 - TanStack Query بمفاتيح `['auth','me']`, `['settings']`, `['prices']`, `['items']`, `['inventory']`, `['sales']`, `['stocktakes']`, `['reports',...]`, `['users']`, `['lookups',...]`, `['dashboard']`؛ تُبطل المفاتيح المتأثرة بعد كل كتابة.
 - `lib/api.ts` يوحّد الطلبات ويعرض `ApiError.displayMessage` بالعربية.
 - `lib/format.ts` يضبط `fmtMoney` (خانتان) و`fmtWeight` (2–3) والتاريخ/الوقت بتنسيق `en-GB`، و`timeAgo`.
-- `lib/pricing-preview.ts` يستدعي `@gold/pricing` نفسه في المتصفح؛ المعاينة استرشادية وسعر البيع الفعلي يُدخل عند الفاتورة.
+- `lib/pricing-preview.ts` يستدعي `@gold/pricing` نفسه في المتصفح لبناء معاينة الأوزان/الأسعار، لكنه يُستدعى فعلياً من شاشة البيع فقط؛ سعر البيع الفعلي يُدخل عند الفاتورة. التفاصيل الكاملة في الملحق 16.
 
 ### 7.3 شاشة بيع جديد — التكلفة والربح/الخسارة (جديد في 0.2.0)
 
@@ -943,7 +1124,7 @@ notRegistered = أصناف AVAILABLE غير موجودة في لقطة الجر�
 
 - بحث فوري بالكود/الاسم/الوصف/المصنّع، وفلاتر الحالة/Nوع/العيار، وصفحات.
 - نموذج القطعة: عند اختيار `SET` يُثبَّت التصنيف «طقم» ويُعطَّل الحقل؛ المصنّع والمورّد قائمتان مع زر إضافة سريعة (`POST /lookups` ثم اختيار القيمة).
-- بطاقة الصنف تعرض سعر الغرام لكل عيار مستقلاً، وأوزان الأساس، والتكلفة لمن يملك صلاحيتها.
+- نموذج الصنف يعرض أوزان الأساس (الإجمالي/الحجر/الفصوص/الصافي) وملخص الشراء بالعملة المحلية، ولا يعرض سعر بيع بالغرام لكل عيار: دالة `buildItemPreview` موجودة في `lib/pricing-preview.ts` لكنها **غير مستخدمة** في `ItemForm.tsx`. بطاقة «أين سعر البيع؟» تشرح أن سعر البيع يُحسب لحظة الفاتورة من سعر السوق وسياسة الفاتورة (راجع 16.4.4).
 
 ---
 
@@ -1018,7 +1199,7 @@ npm.cmd run test:stress       # فحص حِمل وتزامن على المسار
 
 اختبارات محرك التسعير: `packages/pricing/test/engine.test.ts` (جداول الأوزان، BR-10، الربح والتقريب، الأخطاء، `fixedBasis`) و`karat.test.ts` (الأونصة، معاملات العيار، جدول الأسعار، رفض القيم غير الصالحة).
 
-> سكربتا `test:integration` و`test:stress` موجودان في `package.json` ويستدعيان `tools/integration-test.mjs` و`tools/stress-test.mjs`. يحتاجان خادماً حياً على `http://localhost:4000` وقاعدة بيانات مهيأة. بيانات الاختبار تحمل بادئة `QA-` وتُنظَّف آلياً، ويبقى منها فقط ما يمنعه تصميم السجل التاريخي (فواتير ملغاة، سجل أسعار، جرد مغلق، سجل تدقيق).
+> سكربتا `test:integration` و`test:stress` موجودان في `package.json` ويستدعيان `tools/integration-test.mjs` و`tools/stress-test.mjs`. يحتاجان خادماً حياً على `http://localhost:4000` وقاعدة بيانات مهيأة. بيانات الاختبار تحمل بادئة `QA-` وتُنظَّف آلياً، ويبقى منها فقط ما يمنعه تصميم السجل التاريخي (فواتير ملغاة، سجل أسعار، جرد مغلق، سجل تدقيق). المتغيرات والAssertions الدقيقة في 13.6.
 
 ### 9.2 قائمة فحص الإصدار
 
@@ -1043,9 +1224,9 @@ npm.cmd run test:stress       # فحص حِمل وتزامن على المسار
 
 1. انسخ المستودع (بدون `node_modules` و`tools/mysql`) إلى جهاز جديد.
 2. ثبّت Node.js 20+ وPowerShell، ثم `npm.cmd install`.
-3. شغّل `tools/mysql-init.ps1` ثم `tools/mysql-start.ps1`.
-4. انسخ `.env.example` إلى `apps/api/.env` واضبط `DATABASE_URL` و`SESSION_SECRET`؛ لا تضع أسراراً حقيقية في الملفات المتتبعة.
-5. نفّذ `npm.cmd run db:generate` ⇒ `db:push` ⇒ `db:seed`.
+3. جهّز MySQL المحمول كما في 13.5 (عدّل `$root` في السكربتات الثلاثة و`my.ini`)، ثم شغّل `tools/mysql-init.ps1` ثم `tools/mysql-start.ps1`.
+4. انسخ `.env.example` إلى `apps/api/.env` واضبط `DATABASE_URL` و`SESSION_SECRET`؛ أضف `SEED_OWNER_PASSWORD`/`SEED_SELLER_PASSWORD` في الإنتاج؛ لا تضع أسراراً حقيقية في الملفات المتتبعة.
+5. نفّذ `npm.cmd run db:generate` ⇒ `db:push` ⇒ `db:seed` (تذكّر: لا يوجد `postinstall`، و`db:generate` إلزامي على جهاز جديد).
 6. راجع جدول `Setting`، القوائم الستة، المستخدمين، والعدّادات (القسم 3.11).
 7. شغّل `npm.cmd run dev` وتحقق من `/api/health` و`/api/bootstrap` وصفحة الدخول.
 8. غيّر كلمات المرور الافتراضية، ثم اضبط اسم المحل والعملة والعيار الافتراضي وسياسة الربح الافتراضية بما فيها `fixedBasis`.
@@ -1098,5 +1279,537 @@ npm.cmd run test:stress       # فحص حِمل وتزامن على المسار
 | المسارات والشاشات | `apps/web/src/app/App.tsx`, `apps/web/src/pages/*` |
 | أنواع الاستجابة والتنسيق والمعاينة | `apps/web/src/lib/types.ts`, `format.ts`, `pricing-preview.ts` |
 | الأوامر والإصدارات | `package.json`, `apps/*/package.json`, `packages/pricing/package.json` |
+
+---
+
+## 13. ملحق إعادة البناء التنفيذي (تفاصيل البنية والتشغيل)
+
+هذا الملحق يكمّل الأقسام 2 و6 و9 بالتفاصيل التي لا تظهر في منطق الأعمال لكنها ضرورية لبناء نسخة مطابقة تعمل فعلياً.
+
+### 13.1 شجرة الملفات الكاملة
+
+ما يلي هو التوسيع الدقيق لشجرة 2.2 (الملفات المهملة في 2.2 مذكورة هنا):
+
+```
+Gold/
+├─ package.json, package-lock.json, README.md, .gitignore
+├─ apps/api/
+│  ├─ .env.example
+│  ├─ package.json, tsconfig.json, tsup.config.ts
+│  ├─ prisma/
+│  │  ├─ schema.prisma
+│  │  ├─ seed.ts
+│  │  └─ cleanup-qa.ts
+│  └─ src/ ... (auth, lib, middleware, routes, app.ts, index.ts, config.ts, db.ts)
+├─ apps/web/
+│  ├─ index.html, package.json, tsconfig.json, vite.config.ts
+│  └─ src/ ... (app, layout, components, lib, pages)
+│     └─ public/favicon.svg
+├─ packages/pricing/
+│  ├─ package.json, tsconfig.json
+│  └─ src/ , test/
+├─ tools/
+│  ├─ integration-test.mjs
+│  ├─ stress-test.mjs
+│  ├─ build-user-guide.mjs
+│  ├─ mysql-init.ps1, mysql-start.ps1, mysql-stop.ps1
+│  ├─ download/                      (مستثنى من git؛ أرشيف MySQL 8.4.0 winx64)
+│  └─ mysql/                         (مستثنى من git بالكامل)
+│     ├─ my.ini
+│     ├─ mysql-8.4.0-winx64/         (الثنائيات)
+│     └─ data/                       (قاعدة البيانات وسجل الأخطاء)
+└─ docs/ (SYSTEM_SPECIFICATION.md, ARCHITECTURE.md, DECISIONS.md,
+          CHANGELOG.md, USER_MANUAL.md, USER_MANUAL.pdf)
+```
+
+### 13.2 الإصدارات الدقيقة للتبعيات
+
+النطاقات المعلنة في ملفات `package.json` الأربعة (القفل `lockfileVersion 3` يثبّت النسخ المحلولة؛ أمثلة: React 19.3.1، Vite 8.3.8، Express 5.3.0، TypeScript 7.0.2، decimal.js 10.6.0، Zod 4.6.7):
+
+| الحزمة | النطاق | الملف |
+|---|---|---|
+| root dev: concurrently | `^10.0.7` | `package.json` |
+| root dev: typescript | `^7.0.2` | `package.json` |
+| api: @gold/pricing | `^0.2.1` | `apps/api/package.json` |
+| api: @prisma/client | `^6.19.3` | `apps/api/package.json` |
+| api: bcryptjs | `^3.0.3` | `apps/api/package.json` |
+| api: cookie-parser | `^1.4.7` | `apps/api/package.json` |
+| api: cors | `^2.8.6` | `apps/api/package.json` |
+| api: decimal.js | `^10.6.0` | `apps/api/package.json` |
+| api: dotenv | `^18.0.10` | `apps/api/package.json` |
+| api: express | `^5.3.0` | `apps/api/package.json` |
+| api: helmet | `^8.3.0` | `apps/api/package.json` |
+| api: zod | `^4.6.7` | `apps/api/package.json` |
+| api dev: @types/bcryptjs | `^2.4.6` | `apps/api/package.json` |
+| api dev: @types/cookie-parser | `^1.4.10` | `apps/api/package.json` |
+| api dev: @types/cors | `^2.8.19` | `apps/api/package.json` |
+| api dev: @types/express | `^5.0.6` | `apps/api/package.json` |
+| api dev: @types/node | `^26.6.6` | `apps/api/package.json` |
+| api dev: prisma | `^6.19.3` | `apps/api/package.json` |
+| api dev: tsup | `^9.0.0` | `apps/api/package.json` |
+| api dev: tsx | `^4.23.15` | `apps/api/package.json` |
+| web: @gold/pricing | `^0.2.1` | `apps/web/package.json` |
+| web: @tanstack/react-query | `^5.107.1` | `apps/web/package.json` |
+| web: clsx | `^2.1.1` | `apps/web/package.json` |
+| web: decimal.js | `^10.6.0` | `apps/web/package.json` |
+| web: lucide-react | `^1.73.0` | `apps/web/package.json` |
+| web: react / react-dom | `^19.3.1` | `apps/web/package.json` |
+| web: react-router-dom | `^7.18.5` | `apps/web/package.json` |
+| web: tailwind-merge | `^3.7.0` | `apps/web/package.json` |
+| web dev: @fontsource/ibm-plex-sans-arabic | `^5.3.0` | `apps/web/package.json` |
+| web dev: @tailwindcss/vite | `^4.3.5` | `apps/web/package.json` |
+| web dev: @types/react / @types/react-dom | `^19.3.0` | `apps/web/package.json` |
+| web dev: @vitejs/plugin-react | `^6.3.0` | `apps/web/package.json` |
+| web dev: tailwindcss | `^4.3.5` | `apps/web/package.json` |
+| web dev: vite | `^8.3.8` | `apps/web/package.json` |
+| pricing dev: vitest | `^5.1.0` | `packages/pricing/package.json` |
+
+لا توجد حقول `engines` أو `packageManager` ولا Corepack ولا `postinstall`/`prepare`؛ لذلك `npm.cmd run db:generate` خطوة يدوية إلزامية على جهاز جديد. الجذر يحوي حقل `allowScripts` بقائمة `esbuild@0.28.2`, `@prisma/client@6.19.3`, `@prisma/engines@6.19.3` — احتفظ به كما هو. npm workspaces تتطلب npm 7+ (القفل v3 يعني عملياً npm 9+/10+).
+
+### 13.3 TypeScript وVite والبناء
+
+- **لا توجد مسارات مستعارة** (`baseUrl`/`paths`/`@/*`) في أي tsconfig. الاستيراد بين الحزم عبر workspaces npm و`exports` في `packages/pricing/package.json`: `"exports": { ".": "./src/index.ts" }`, `"types": "./src/index.ts"`؛ أي أن المحرك يُستهلك كملفات TypeScript مصدرية، ويُضمَّن داخل API عبر tsup `noExternal` وداخل Web عبر Vite. لا تُضف Path aliases عند إعادة البناء.
+- كل الحزم: `target ES2022`, `module ESNext`, `moduleResolution Bundler`, `strict`, `noUncheckedIndexedAccess`, `noEmit`. pricing يضيف `verbatimModuleSyntax`, `noImplicitOverride`, `isolatedModules`, `exactOptionalPropertyTypes: false`. web يضيف `jsx: react-jsx`, `isolatedModules`, `types: ['vite/client']`. api يضيف `types: ['node']`, `include: ['src','prisma']`.
+- **Vite dev**: port `5173`، host `127.0.0.1` افتراضياً؛ للوصول من الهاتف `VITE_HOST=0.0.0.0 npm.cmd run dev:web`. proxy: `/api ⇒ http://127.0.0.1:4000` مع `changeOrigin: false` (المتصفح يستخدم `http://localhost:5173` وهو ما يطابق `APP_ORIGIN` الافتراضي ويمرّ عبر `originGuard`).
+- **بناء Vite**: `target es2022` وتقسيم يدوي: `react-router|react-dom|/react/` ⇒ chunk `react`، و`@tanstack` ⇒ chunk `query`. الناتج `apps/web/dist`.
+- **بناء API**: `tsup` بـ`entry: ['src/index.ts']`, `format: ['esm']`, `target: 'node20'`, `outDir: 'dist'`, `clean: true`, `sourcemap: process.env.NODE_ENV !== 'production'`, `external: ['@prisma/client','.prisma','@prisma/client/runtime/library']`, `noExternal: ['@gold/pricing']`. الناتج `apps/api/dist/index.js`.
+- **تشغيل الإنتاج**: `npm run start -w @gold/api` (`node dist/index.js`)؛ `npm run preview -w @gold/web` لمعايرة dist. لا يوجد سكربت يقدّم الواجهة من Express؛ يلزم وكيل عكسي أو خادم ثابت منفصل. `db:generate` إلزامي قبل `build`/`start`.
+
+### 13.4 سكربتات الحزم (التفويض الدقيق)
+
+| سكربت الجذر | التنفيذ الفعلي |
+|---|---|
+| `dev` | `concurrently -n api,web -c yellow,cyan "npm run dev -w @gold/api" "npm run dev -w @gold/web"` |
+| `dev:api` | `tsx watch --clear-screen=false src/index.ts` |
+| `dev:web` | `vite` |
+| `build` | بناء API ثم Web |
+| `test` | `npm run test -w @gold/pricing` ⇒ `vitest run` |
+| `typecheck` | pricing ثم api ثم web (`tsc --noEmit`) |
+| `db:cleanup-qa` | `tsx prisma/cleanup-qa.ts` |
+| `docs:pdf` | `node tools/build-user-guide.mjs` |
+| `db:reset` | `prisma db push --force-reset --skip-generate && tsx prisma/seed.ts` (**يحذف كل البيانات**) |
+| إضافية | `start` (api)، `preview` (web)، `test:watch` (pricing)، `db:studio` |
+
+### 13.5 إعداد MySQL المحمول (تفاصيل التنفيذ)
+
+- مجلد `tools/mysql/` مستثنى من git بالكامل؛ يحتوي `my.ini`, `mysql-8.4.0-winx64/` (من `tools/download/mysql-8.4.0-winx64.zip`) و`data/`.
+- **مسارات مطلقة مكتوبة داخل السكربتات**: `mysql-init.ps1`, `mysql-start.ps1`, `mysql-stop.ps1` و`tools/mysql/my.ini` تشير إلى `C:\Users\D047\Gold\tools\mysql`. عند النسخ لجهاز آخر عدّل `$root` في السكربتات الثلاثة و`basedir`/`datadir`/`log_error` في `my.ini`، وإلا فشل التشغيل.
+- `my.ini`: `port=3306`, `bind-address=127.0.0.1`, `max_connections=60`, `lower_case_table_names=1`, `character-set-server=utf8mb4`, `collation-server=utf8mb4_0900_ai_ci`, `log_error=.../data/mysql-error.log`, `log_error_verbosity=2`, `slow_query_log=0`.
+- `mysql-init.ps1` (مرة واحدة، idempotent): يهيّئ `data` بـ`--initialize-insecure` إن لم يكن موجوداً، يبدأ mysqld، ثم ينشئ:
+  - `CREATE DATABASE IF NOT EXISTS gold_pos CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;`
+  - `CREATE USER IF NOT EXISTS 'gold'@'localhost' IDENTIFIED BY 'Gold@Dev2026';` والمثيل `'gold'@'127.0.0.1'` بالكلمة نفسها.
+  - `GRANT ALL ON gold_pos.*` و`GRANT ALL ON \`prisma\_migrate\_shadow\_db\_%\`.*` للاثنين، ثم `FLUSH PRIVILEGES`. الاتصال كـroot بلا كلمة (`--skip-password`).
+- لذلك يجب أن يكون `DATABASE_URL` في `apps/api/.env` أثناء التطوير:
+  `mysql://gold:Gold@Dev2026@127.0.0.1:3306/gold_pos` (في `.env.example` يظهر `YOUR_PASSWORD` كعنصر نائب فقط).
+- `mysql-start.ps1` / `mysql-stop.ps1`: بدء/إيقاف آمن عبر فحص المنفذ 3306؛ الإيقاف بـ`mysqladmin -u root --skip-password shutdown`؛ رسائل الفشل تُحيل إلى `tools/mysql/data/mysql-error.log`. تعتمد على `Get-NetTCPConnection` (صلاحيات cmdlet مناسبة).
+- النسخ الاحتياطي: `mysqldump.exe --defaults-file=...\my.ini -u gold -p gold_pos > backup.sql`، ويجب إيقاف MySQL قبل نسخ `data/` مباشرة.
+
+### 13.5.1 محتوى `.env.example` المرجعي
+
+الملف يحتوي 14 مفتاحاً (بدون `SEED_*` و`TRUST_PROXY`) بالقيم النائبة التالية:
+
+```dotenv
+NODE_ENV=development
+PORT=4000
+DATABASE_URL="mysql://gold:YOUR_PASSWORD@127.0.0.1:3306/gold_pos"
+SESSION_SECRET="replace-with-a-long-random-secret"
+SESSION_DAYS=7
+APP_ORIGIN=http://localhost:5173
+GOLD_PRICE_PROVIDER=manual
+GOLD_PRICE_API_URL=https://goldapi.dev/api/v1
+GOLD_PRICE_API_KEY=
+GOLD_PRICE_REFRESH_MINUTES=10
+FX_PROVIDER=manual
+FX_API_URL=
+FX_API_KEY=
+LOCAL_CURRENCY=LYD
+```
+
+### 13.6 عقود سكربتات الفحص
+
+**`tools/integration-test.mjs`** — متغيرات: `API_BASE_URL` (افتراضي `http://localhost:4000/api`) و`ROUNDS` (افتراضي 2). يسجّل الدخول كـ`admin`/`Admin@2026` و`seller`/`Seller@2026` في كل دورة، ويمرّ بعشر مجموعات: public، auth، settings، lookups، prices، items، sales (بأنماط `PERCENT` و`FIXED/PIECE` و`FIXED/GRAM` مع `fxMode: CHEQUE` و`MANUAL`)، inventory/dashboard/reports، stocktakes، users. يتحقق من إخفاء التكلفة، فرض تصنيف الطقم، حفظ سياسة الفاتورة، إرجاع الكمية عند الإلغاء، ومنع 403 للبائع. التنظيف: إلغاء الفواتير، إرجاع الإعدادات، حذف الأصناف والقوائم، إغلاق الجرد؛ الصفوف غير القابلة للحذف (الأسعار، الفواتير، الجرد، `AuditLog`, الجلسات) تُبلَّغ كـ`leftovers` ولا تُحذف. الرقم `142` نتيجة الدورتين الأخيرتين وليس ثابتاً في الكود؛ المعيار `failed=0` وخروج العملية بـ0.
+
+**`tools/stress-test.mjs`** — متغيرات: `API_BASE_URL`, `WORKERS` (12), `REQUESTS_PER_WORKER` (40), `ROUNDS` (2). 21 نقطة قراءة + دفعة كتابة (صنفان `QA-STRESS-*` يُنشآن ثم يُحذفان كل دورة) ⇒ 960 طلباً في التشغيل الافتراضي. يفشل عند أي خطأ شبكة، أي حالة غير 2xx، أي 5xx، أو health غير 2xx؛ يطبع JSON فيه توزيع الحالات و`min/avg/max/p95` و`result: PASS|FAIL` ويخرج بـ1 عند الفشل.
+
+**`apps/api/prisma/cleanup-qa.ts`** — حذف مباشر داخل معاملة واحدة لصفوف `QA-`: `Sale` حيث `customerName startsWith 'QA-'`, `Item` حيث `name startsWith 'QA-'`, `Stocktake` حيث `notes startsWith 'QA-'`, `Lookup` حيث `value startsWith 'QA-'`. يُبقي `AuditLog` ويحتاج `DATABASE_URL`.
+
+### 13.7 توليد دليل PDF
+
+- المدخل `docs/USER_MANUAL.md`، المخرج `docs/USER_MANUAL.pdf` (ملف ثنائي متتبَّع في git ويُحدَّث يدوياً وقت التوثيق). كذلك `npm.cmd run docs:pdf:spec` يولّد `docs/SYSTEM_SPECIFICATION.pdf` من هذا المستند بالأداة نفسها عبر `tools/build-spec-pdf.mjs` (متغيرات `DOCS_MD/DOCS_PDF/DOCS_TITLE`).
+- `tools/build-user-guide.mjs` محوّل Markdown→HTML عربي RTL (عناوين بمعرّفات، جداول، اقتباسات، قوائم، كود) ويضمّن خط IBM Plex Sans Arabic من `node_modules/@fontsource/ibm-plex-sans-arabic/files` بالأوزان 400/600/700 كـbase64 داخل CSS.
+- الطباعة عبر Microsoft Edge headless بمسار ثابت `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` وخيارات `--headless=new --no-pdf-header-footer --virtual-time-budget=5000`؛ ملف تعريف مؤقت في `os.tmpdir()` يُحذف بعد الطباعة. يتحقق أن حجم الناتج ≥10 كيلوبايت وإلا يفشل؛ مهلة 120 ثانية. `KEEP_HTML=1` يُبقي `docs/.user-manual.tmp.html` للمعاينة.
+- هذا المسار مخصوص لتوثيق PDF ولا علاقة له بطباعة فواتير التطبيق (تتم عبر `window.print`).
+
+### 13.8 سير العمل والإصدار
+
+- المستودع: فرع `main` واحد + `origin/main`، بلا وسوم (tags) وبلا `.github`/CI وبلا سكربت إصدار آلي. عند 0.2.1 commitان: `1caba8a release: gold POS v0.2.1` ثم `7d3c407 docs: finalize v0.2.1 system specification and regenerate user manual PDF`.
+- النشر يدوي بالكامل: `npm.cmd install` ⇒ `db:generate` ⇒ `db:push` ⇒ `db:seed` ⇒ `build` ⇒ تشغيل API وخدمة ثابتة للواجهة خلف وكيل.
+- عند رفع الإصدار حدّث **يدوياً** المواقع الستة معاً: `version` في `package.json` الجذر والثلاثة workspaces، `version: '0.2.1'` في `apps/api/src/app.ts`، `الإصدار 0.2.1` في `apps/web/src/layout/AppShell.tsx`، ثم README/CHANGELOG/عناوين المستندات وأعد توليد PDF.
+- المتتبَّع في git: الكود والوثائق و`USER_MANUAL.pdf` و`.env.example`. المستبعد: `node_modules/`, `dist/`, `.env`/`.env.*`, `tools/mysql/`, `tools/download/`, `*.log`, `coverage/`, `.vite/`.
+
+---
+
+## 14. ملحق عقود API التفصيلية (مطابق للكود)
+
+القسم 4 ملخص؛ هذا الملحق يعطي مخططات Zod والقواعد الدقيقة اللازمة لإعادة إنتاج الاستجابات والأخطاء كما هي.
+
+### 14.1 مخططات Zod الحرفية
+
+**`itemSchema` (`routes/items.ts:18-67`):**
+
+```ts
+const optionalId = z.number().int().positive().nullable().optional();
+
+const componentSchema = z.object({
+  kind: z.enum(['RING','BRACELET','NECKLACE','EARRING','ANKLET','CHAIN','PENDANT','OTHER']),
+  name: z.string().trim().max(120).nullable().optional(),
+  karat: z.number().int().min(1).max(24),
+  weight: z.number().positive('وزن المكوّن مطلوب'),
+  stoneWeight: z.number().min(0).default(0),
+  stonePrice: z.number().min(0).nullable().optional(),
+  inlaysWeight: z.number().min(0).default(0),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+const itemSchema = z.object({
+  type: z.enum(['PIECE','SET']),
+  code: z.string().trim().max(40).regex(/^[A-Za-z0-9_-]+$/,
+    'الكود يقبل حروفاً لاتينية وأرقاماً وشرطات فقط').optional(),
+  name: z.string().trim().min(1,'اسم القطعة مطلوب').max(160),
+  categoryId: optionalId,
+  size: z.string().trim().max(40).nullable().optional(),
+  karat: z.number().int().min(1).max(24),
+  totalWeight: z.number().positive('الوزن الإجمالي مطلوب').optional(),
+  stoneWeight: z.number().min(0).default(0),
+  stonePrice: z.number().min(0).nullable().optional(),
+  inlaysWeight: z.number().min(0).default(0),
+  quantity: z.number().int().min(1).max(9999).default(1),
+  confirmSameWeight: z.boolean().optional(),
+  purchaseGramPrice: z.number().min(0).nullable().optional(),
+  purchasePrice: z.number().min(0).optional().default(0),
+  purchaseCurrency: z.string().trim().min(1).max(3).default('USD'),
+  purchaseFxRate: z.number().positive('سعر الصرف يجب أن يكون أكبر من صفر').optional(),
+  purchaseStatus: z.enum(['NEW','USED','SCRAP']).default('NEW'),
+  weightBasis: z.enum(['NET_GOLD','TOTAL','MINUS_STONE','MINUS_INLAYS']).nullable().optional(),
+  supplierId: optionalId, countryId: optionalId, manufacturerId: optionalId,
+  manufacturer: z.string().trim().max(160).nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  addedAt: z.string().datetime().optional(),
+  components: z.array(componentSchema).optional(),
+});
+```
+
+**`createSchema` للمبيعات (`routes/sales.ts:13-34`):**
+
+```ts
+const createSchema = z.object({
+  items: z.array(z.object({
+    itemId: z.number().int().positive(),
+    quantity: z.number().int().min(1).max(9999).default(1),
+    unitPrice: z.number().positive('سعر البيع يجب أن يكون أكبر من صفر'),
+  })).min(1,'الفاتورة يجب أن تحتوي على صنف واحد على الأقل'),
+  paymentMethodId: z.number().int().positive().nullable().optional(),
+  customerName: z.string().trim().max(160).nullable().optional(),
+  customerPhone: z.string().trim().max(40).nullable().optional(),
+  profitMode: z.enum(['PERCENT','FIXED','MANUAL']).nullable().optional(),
+  profitValue: z.number().min(0).max(100_000).nullable().optional(),
+  fixedBasis: z.enum(['GRAM','PIECE']).nullable().optional(),
+  roundingStep: z.union([z.literal(0),z.literal(5),z.literal(10)]).nullable().optional(),
+  fxMode: z.enum(['CASH','CHEQUE']).nullable().optional(),
+  fxRate: z.number().positive().max(10_000).nullable().optional(),
+});
+const cancelSchema = z.object({
+  reason: z.string().trim().min(3,'سبب الإلغاء مطلوب').max(500),
+});
+```
+
+**`schema` للإعدادات (`routes/settings.ts:11-33`):**
+
+```ts
+const schema = z.object({
+  shopName: z.string().trim().min(1).max(160).optional(),
+  currency: z.string().trim().min(2).max(8)
+    .regex(/^[a-zA-Z]{2,8}$/,'رمز العملة يجب أن يكون حروفاً لاتينية')
+    .transform(v => v.toUpperCase()).optional(),
+  codeMode: z.enum(['AUTO','MANUAL']).optional(),
+  deductStone: z.boolean().optional(), deductInlays: z.boolean().optional(),
+  profitMode: z.enum(['PERCENT','FIXED','MANUAL']).optional(),
+  profitValue: z.number().min(0).max(100_000).optional(),
+  fixedBasis: z.enum(['GRAM','PIECE']).optional(),
+  fxSource: z.enum(['MANUAL','API']).optional(),
+  roundingStep: z.union([z.literal(0),z.literal(5),z.literal(10)]).optional(),
+  priceStaleHours: z.number().int().min(1).max(168).optional(),
+  showCostToSeller: z.boolean().optional(), sellerCanAddItems: z.boolean().optional(),
+  defaultKarat: z.number().int().min(1).max(24).optional(),
+});
+```
+
+**أسعار وجرد:**
+
+```ts
+const priceCreateSchema = z.object({
+  type: z.enum(['OUNCE','FX']),
+  value: z.number().positive('القيمة يجب أن تكون أكبر من صفر'),
+});
+const stocktakeCreateSchema = z.object({
+  type: z.enum(['QUARTERLY','SEMIANNUAL','ANNUAL']),
+  notes: z.string().max(2000).nullable().optional(),
+});
+const stocktakeLineSchema = z.object({
+  countedWeight: z.number().min(0).nullable().optional(),
+  present: z.boolean().optional(),
+});
+```
+
+### 14.2 قواعد الأصناف الدقيقة
+
+- `resolveTotals`: للطقم يلزم مكوّن واحد على الأقل؛ تُجمع الأوزان بـ`aggregateComponents` وتُقرَّب 3 خانات، ويُرفض `netGoldWeight ≤ 0`. للقطعة يُستدعى `computeWeights` بأساس `NET_GOLD` دائماً لحساب `netGoldWeight` المخزَّن.
+- `resolvePurchase`: العملة تُحوَّل لكبير؛ إن كانت مساوية `LOCAL_CURRENCY` ⇒ `purchaseFxRate=1`. إن كانت أجنبية يلزم `purchaseFxRate > 0` وإلا `400`. إن وُجد `purchaseGramPrice` ⇒ `purchasePrice = round2(gramPrice × netGoldWeight)` و`purchaseCostDinar = round2(purchasePrice × rate)`. إن غاب ⇒ `purchasePrice = round2(المرسل)` و`purchaseGramPrice = round4(purchasePrice ÷ netGoldWeight)` إن أمكن، و`purchaseCostDinar = purchaseCostDinar(...)`.
+- الكود: في `AUTO` يتجاهل الخادم أي `code` مرسل ويولّد `P-####` أو `S-####` داخل المعاملة عبر `nextSequence` حتى 100 محاولة، متخطياً أي كود مستعمل؛ في `MANUAL` الكود مطلوب ويُرفض المكرر برسالة عربية مخصصة.
+- `resolveCategoryId` يفرض تصنيف «طقم» النشط للـSET إن وُجد، وإلا يمرّر `categoryId` بعد التحقق من نوعه. `resolveManufacturer` يتحقق من `MANUFACTURER` ويحفظ الاسم في `manufacturer` أيضاً. `resolveLookupId` يتحقق من `CATEGORY`/`SUPPLIER`/`COUNTRY`.
+- البائع: يحتاج `sellerCanAddItems=true`؛ وإن كانت `showCostToSeller=false` يُمنع من إرسال أي `purchaseGramPrice > 0` أو `purchasePrice > 0` برسالة `إدخال بيانات الشراء متاح للمالك فقط`.
+- حقول الشراء المحجوبة من الاستجابة: `purchaseGramPrice`, `purchasePrice`, `purchaseCurrency`, `purchaseFxRate`, `purchaseCostDinar`, `purchaseStatus`.
+- `GET /api/items` البحث `q` في `name/code/description/manufacturer`؛ `status` و`type` غير الصالحين يرميان Zod 422، أمّا `karat` غير الصالح فيُتجاهل. الترتيب `createdAt desc`. `GET /by-code/:code` و`/:id` يشملان relations مختلفة لكنهما يطبّقان الإخفاء نفسه.
+- `PATCH` يتطلب المخطط كاملاً، يرفض صنف `SOLD` وتغيير النوع، ويحذف مكوّنات الطقم ثم يعيد إنشائها داخل المعاملة. `DELETE` يرفض أي صنف مرتبط بـ`SaleItem` بالرسالة `لا يمكن حذف صنف مرتبط بعمليات بيع — يمكنك تعطيله بدل ذلك`. المخطط لا يحوي حقل `active` للصنف، لذلك تُحتفظ بهذه الرسالة كما هي في الكود ولا يوجد مسار «تعطيل» مستقل؛ تغيير الحالة يتم عبر البيع/الإلغاء فقط.
+
+### 14.3 قواعد المبيعات والأسعار الدقيقة
+
+- `GET /sales`: `from/to` تُحلل بـ`new Date` وتُتجاهل إن كانت غير صالحة؛ `sellerId` يُتجاهل إن لم يكن عدداً صحيحاً موجباً؛ `status` غير الصالح ⇒ 422. الترتيب `createdAt desc`. استرجاع القائمة يُسقط `type` من الصنف، بينما `GET /:id` يتضمنه.
+- عند الإنشاء: تُجمع الكميات المطلوبة لكل `itemId` في `Map` لفحص المخزون، لكن سطور `SaleItem` تُحفظ كما أُرسلت. `total = round2(Σ unitPrice × quantity)`؛ `lineTotal = round2(unitPrice × quantity)`. رقم الفاتورة `INV-${padStart(5,'0')}`. `profitValue` يُخزَّن `0` دائماً عند `MANUAL`. `paymentMethodId` إن وُجد يجب أن يكون من نوع `PAYMENT_METHOD`.
+- `POST /sales/:id/cancel`: تحديث شرطي `{id,status:COMPLETED}` يمنع الإلغاء المزدوج؛ ثم `increment` لكمية كل سطر وتعيين `AVAILABLE`؛ تدقيق `CANCEL_SALE` بالحالة قبل/بعد والسبب. لا تراجع عن الإلغاء.
+- `GET /prices/table`: `ounce` و`fx` من الاستعلام يقبلان أرقاماً منتهية موجبة فقط وإلا يُتجاهلان؛ عند غياب أي منهما ⇒ `ready:false, table:null` مع `current` و`providers`. مصادر العيارات: `Lookup(KARAT)` النشطة مرتبة بـ`sortOrder`، والبديل `[18,21,24]`. شكل `providers.ounce`: `{mode, configured, docsUrl, autoRefresh, refreshMinutes}`.
+- `POST /prices`: كل حفظ صف جديد؛ `OUNCE` للمالك فقط، `FX` للمالك والبائع. `GET /history` صفحات `{rows,total,page,pageSize}` مع اسم المستخدم.
+
+### 14.4 قواعد المخزون والجرد والتقارير
+
+- `GET /inventory/summary`: يعمل على الأصناف `AVAILABLE` فقط؛ `ready` من الأسعار؛ عند عدم الجاهزية كل القيم صفر. `canSeeCost = role OWNER || setting.showCostToSeller`. حقول `cost/margin` تُحذف من `totals` و`byKarat` و`rows` عند المنع. `byKarat` و`rows` مرتبان بالعيار تصاعدياً (والكود داخل العيار). `totals.items` عدد الأصناف و`units` مجموع الكميات.
+- فتح الجرد: يرفض وجود جرد `OPEN`؛ يأخذ لقطة لكل صنف `AVAILABLE` مع `expectedWeight=totalWeight` و`valueAtOpen` من التقييم اللحظي؛ يستهلك `STOCKTAKE_REF` ويسجّله في تدقيق `OPEN_STOCKTAKE` فقط (لا يُخزَّن على صف الجرد). الترتيب `openedAt desc` والحد 100 في القائمة.
+- تعديل السطر: `countedWeight` إن غاب يُحتفظ بالقيمة السابقة؛ `diff = round3(counted − expected)` ويُحسب دائماً ويُحفظ حتى إن لم يُرسل `countedWeight`. رفض إذا كان الجرد `CLOSED`. تدقيق `UPDATE_STOCKTAKE_LINE` بقبل/بعد كاملين.
+- الإغلاق: تحديث شرطي `{id,status:OPEN}` يمنع الإغلاق المزدوج. `GET /differences` يعيد `missing` (`present=false`) و`weightDiffs` (`present=true` و`weightDiff ≠ 0`) و`notRegistered` (أصناف `AVAILABLE` غير موجودة في لقطة الجرد) و`counts`؛ المجموعات منفصلة.
+- `GET /reports/sales`: فواتير `COMPLETED` فقط؛ فلاتر `from/to/sellerId/paymentMethodId/karat`؛ `karat > 24` يُتجاهل. المخرجات `count,total,average,bySeller,byPayment,byKarat,rows` مع تقريب 2 للأموال و3 للأوزان.
+- `GET /reports/profit`: سطور مبيعات `COMPLETED`; `cost = purchaseCostDinar × quantity`، `profit = lineTotal − cost`، `marginPercent = profit ÷ revenue × 100` (أو 0 عند غياب الإيراد).
+- `GET /reports/inventory`: مسار OWNER دائماً، لذلك يتضمن `cost/margin` دائماً بغض النظر عن `showCostToSeller`.
+- `GET /reports/prices`: آخر 500 صف مع اسم المستخدم. `GET /reports/audit`: `entity` يُقتطع إلى 60 حرفاً، `take` افتراضي 100 ونطاقه 1–500.
+- `GET /dashboard`: حدود اليوم والشهر حسب **الوقت المحلي للخادم**؛ `today/month` من مجمع `COMPLETED`؛ `recentSales` آخر 6؛ `lastStocktake` أحدث `openedAt`؛ جدول الأسعار من العيارات النشطة أو `[18,21,24]`.
+- حذف `Lookup`: يُحذف فعلياً إن لم يكن مستعملاً؛ إن كان مستعملاً في `CATEGORY/SUPPLIER/MANUFACTURER/COUNTRY` عبر FK أو `PAYMENT_METHOD` عبر فواتير ⇒ يُعطَّل (`active=false`) مع تدقيق `DEACTIVATE_LOOKUP`. نوع `KARAT` **لا** يُفحص مقابل الأصناف ويمكن حذفه.
+
+### 14.5 مصفوفة الأخطاء الموسّعة
+
+تُضاف إلى جدول 8.5:
+
+| الحالة | الرمز | الرسالة/السلوك |
+|---|---|---|
+| مسار غير معروف | `404 NOT_FOUND` | `المسار المطلوب غير موجود (<METHOD>).` |
+| Prisma `P2011` | `400 REQUIRED_FIELD` | حقل مطلوب فارغ |
+| Prisma `P2000` | `400 VALUE_TOO_LONG` | قيمة أطول من المسموح |
+| Prisma غير مصنَّف | `500 DATABASE_ERROR` | رسالة عامة |
+| Prisma `P1000/P1001/P1002/P1008/P1010/P1017` | `503 DATABASE_UNAVAILABLE` | شغّل قاعدة البيانات |
+| Prisma `P2021/P2022/P3005` | `503 DATABASE_NOT_READY` | شغّل تحديث قاعدة البيانات |
+| أخطاء اتصال Prisma | `503 DATABASE_UNAVAILABLE` | كشف بالنمط: `Can't reach database server`, `ECONNREFUSED`, `ETIMEDOUT`, `connect ECONN`, `Connection refused`, `Access denied for user` أو أسماء `PrismaClientInitializationError/PrismaClientRustPanicError/PrismaClientUnknownRequestError` |
+| JSON تالف | `400 INVALID_JSON` | `صيغة البيانات المرسلة غير صحيحة.` |
+| جسم كبير | `413 PAYLOAD_TOO_LARGE` | `حجم البيانات المرسل كبير جداً. اختصر المحتوى ثم أعد المحاولة.` |
+| حد المعدل | `429 RATE_LIMITED` | مع ترويسة `Retry-After` |
+
+`zod-ar` يُحمَّل كـside effect في السطر الأول من `app.ts` لتطبيق الترجمة العربية عالمياً. Zod يُعيد `details = [{path, message}]` وأول رسالة في `message`. كل الأخطاء تنشئ `requestId = randomUUID()` وتضعه في الترويسة والجسم؛ أخطاء Prisma/الاتصال/غير المعالجة تُسجَّل في سجل الخادم فقط مع `requestId` و`METHOD path`.
+
+### 14.6 مصفوفة التدقيق
+
+| الإجراء | الكيان | داخل معاملة؟ | أهم مفاتيح `oldValue/newValue` |
+|---|---|---|---|
+| `LOGIN`, `CHANGE_PASSWORD` | `user` | لا | معرّف المستخدم/اسم الدخول؛ لا كلمة مرور |
+| `CREATE_USER`, `UPDATE_USER`, `RESET_PASSWORD` | `user` | لا | الحقول المغيّرة؛ لا كلمة مرور |
+| `CREATE_LOOKUP`, `UPDATE_LOOKUP` | `lookup` | لا | `value/active/sortOrder` |
+| `DEACTIVATE_LOOKUP`, `DELETE_LOOKUP` | `lookup` | لا | `id` والقيمة قبل الحذف |
+| `UPDATE_SETTINGS` | `settings` | لا | `oldValue`: `codeMode/deductStone/deductInlays/profitMode/profitValue/fixedBasis/roundingStep/priceStaleHours/showCostToSeller/sellerCanAddItems`؛ `newValue`: جسم الطلب الخام |
+| `UPDATE_PRICE`, `FETCH_PRICE`, `AUTO_FETCH_PRICE` | `price` | لا/نعم حسب المسار | `type/value/source` |
+| `CREATE_ITEM`, `UPDATE_ITEM`, `DELETE_ITEM` | `item` | نعم (CREATE/UPDATE) | `code/name/type/karat/totalWeight/quantity/purchasePrice` |
+| `CREATE_SALE`, `CANCEL_SALE` | `sale` | نعم | `invoiceNo/total/lines` أو `status/total/reason` |
+| `OPEN_STOCKTAKE`, `CLOSE_STOCKTAKE` | `stocktake` | نعم | `type/ref/lines` أو `status/lines` |
+| `UPDATE_STOCKTAKE_LINE` | `stocktakeLine` | نعم | `countedWeight/present/weightDiff/stocktakeId` |
+
+---
+
+## 15. ملحق خط التشغيل والأمان (Runtime Pipeline)
+
+### 15.1 ترتيب الـmiddleware في `app.ts`
+
+1. استيراد `./lib/zod-ar.js` (ترجمة رسائل Zod عربياً).
+2. `app.disable('x-powered-by')` و`app.set('trust proxy', config.TRUST_PROXY)`.
+3. `helmet({ crossOriginResourcePolicy: { policy: 'same-site' } })`.
+4. `cors({ origin: allowedOrigins, credentials: true })`؛ `allowedOrigins` في الإنتاج `[APP_ORIGIN]`، وفي التطوير `[APP_ORIGIN, http://localhost:5173, http://127.0.0.1:5173]`.
+5. `express.json({ limit: '1mb' })` ثم `cookieParser()`.
+6. `originGuard` ثم `attachUser`.
+7. ترويسات `Cache-Control: no-store` و`Pragma: no-cache` لكل `/api`.
+8. `/api/health` و`/api/bootstrap` عامّان؛ ثم تركيب المسارات بالترتيب: auth، users (OWNER)، lookups، settings، prices، items، sales، inventory، stocktakes، reports (OWNER)، dashboard.
+9. `notFoundHandler` ثم `errorHandler`.
+
+`originGuard` يمرّر `GET/HEAD/OPTIONS` وطلبات بلا ترويسة `Origin` (نفس الأصل/CLI)، ويرفض `Origin: null`، ويسمح في التطوير بـ`APP_ORIGIN` و`http://localhost:${PORT}` و`http://127.0.0.1:${PORT}` و`localhost:5173` و`127.0.0.1:5173`.
+
+### 15.2 الجلسات والكوكي
+
+- `SESSION_COOKIE = 'gold_session'`؛ التوكن `randomBytes(32).toString('hex')`； `Session.id = sha256(token)`؛ التوكن الخام لا يُحفظ في DB.
+- الكوكي: `httpOnly`, `sameSite: 'lax'`, `secure = isProd`, `path: '/'`, `expires = الآن + SESSION_DAYS أيام`.
+- `resolveSession` يحذف الجلسة المنتهية، ويرفض مستخدم `active=false`، ويحدّث `lastUsedAt` مرة كل ساعة فقط.
+- `ip` من `req.ip` و`userAgent` مقتطع إلى 255 حرفاً.
+- الدخول الناجح يُدمّر جلسة الكوكي الحالية ويُنشئ واحدة جديدة ويُصفّر عدّادات الدخول؛ `destroyAllUserSessions` لإعادة التعيين/التعطيل، و`destroyOtherUserSessions(userId, keepToken)` بعد تغيير كلمة المرور.
+
+### 15.3 حدود المعدل
+
+| الحد | المفتاح | النافذة | الحد الأقصى |
+|---|---|---|---|
+| دخول/IP | `login-ip:<req.ip>` | 10 دقائق | 30 |
+| دخول/حساب | `login-user:<username منخفض>` | 10 دقائق | 8 |
+| جلب سعر | `price-fetch:<userId أو ip>` | 5 دقائق | 20 |
+
+التنفيذ في الذاكرة بخريطة `buckets` و`MAX_BUCKETS = 20000`؛ عند التجاوز يُحذف المنتهي ثم الأقدم إدراجاً. التجاوز ⇒ 429 مع `Retry-After` بالثواني. تُصفَّر عند إعادة تشغيل الخادم (راجع 11.6).
+
+### 15.4 سياسة كلمة المرور
+
+8 أحرف على الأقل، ولا تُقبل إذا كانت `bcrypt.truncates(password)` (أي >72 بايت)، ولا تحتوي اسم المستخدم إن كان طوله ≥3، ولا تكون من القائمة: `password, password1, 12345678, 123456789, qwerty123, admin123, admin1234, seller123, iloveyou`. عند غياب المستخدم تُقارن كلمة المرور بـ`DUMMY_PASSWORD_HASH` (`bcrypt.hashSync('gold-pos-dummy-password', 12)`) لتقريب زمن الاستجابة ومنع كشف الحسابات.
+
+### 15.5 الإقلاع والإغلاق
+
+- `index.ts` يستدعي `createApp()`، ويستمع على `config.PORT`، ويبدأ مجدول الأسعار، ويعرض سطر تشغيل. Prisma يسجّل `warn/error` في التطوير و`error` فقط في الإنتاج. `unhandledRejection` يُسجَّل.
+- عند `SIGINT/SIGTERM`: إيقاف المجدول ⇒ إغلاق خادم HTTP ⇒ `$disconnect()` من Prisma ⇒ خروج؛ ومؤقت إجباري 8 ثوانٍ إن تعطّل الإغلاق.
+
+---
+
+## 16. ملحق الواجهة الكامل (مرجع إعادة بناء الشاشات)
+
+الأقسام 7.1–7.6 تذكر السلوك الحساس؛ هذا الملحق يكفي وحده لبناء الواجهة كما هي: الهوية البصرية، الهيكل العام، كل شاشة، وعميل المتصفح.
+
+### 16.1 الهوية البصرية (`apps/web/src/styles.css`)
+
+`@import 'tailwindcss';` ثم `@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));`. المتغيرات كما يلي (قيم فاتحة / داكنة):
+
+| المتغير | فاتح `:root` | داكن `[data-theme='dark']` |
+|---|---|---|
+| `--bg` | `#f7f4ec` | `#0d0e11` |
+| `--surface` | `#ffffff` | `#15171c` |
+| `--surface-2` | `#f1ede1` | `#1b1e25` |
+| `--surface-3` | `#e9e2d1` | `#232733` |
+| `--border` | `#e4ddcb` | `#272b35` |
+| `--border-strong` | `#d3c8ad` | `#343a48` |
+| `--text` | `#191a1f` | `#f2efe6` |
+| `--muted` | `#6b707a` | `#9aa1ae` |
+| `--gold` | `#a8811f` | `#d8b44e` |
+| `--gold-hover` | `#916d16` | `#e8ca6d` |
+| `--gold-soft` | `#f4e8c5` | `#352a0e` |
+| `--gold-glow` | `rgba(168,129,31,0.18)` | `rgba(216,180,78,0.22)` |
+| `--success` | `#2b7455` | `#56b189` |
+| `--success-soft` | `#e2f2e9` | `#12271e` |
+| `--danger` | `#ae3f26` | `#dc7861` |
+| `--danger-soft` | `#fbe8e3` | `#2b1613` |
+| `--warning` | `#9d6d13` | `#dcab55` |
+| `--warning-soft` | `#fcefd6` | `#2b2110` |
+| `--info` | `#2f5f8a` | `#86aed8` |
+| `--info-soft` | `#e6eff7` | `#14202c` |
+| `--shadow-s` | `0 1px 2px rgba(25,26,31,.06)` | `0 1px 2px rgba(0,0,0,.4)` |
+| `--shadow-m` | `0 4px 16px -4px rgba(25,26,31,.12)` | `0 6px 20px -6px rgba(0,0,0,.6)` |
+| `--shadow-l` | `0 18px 45px -18px rgba(25,26,31,.28)` | `0 22px 50px -20px rgba(0,0,0,.8)` |
+
+`@theme inline` يربط المتغيرات بأسماء Tailwind: `--color-bg`, `--color-surface`, `--color-surface2`, `--color-surface3`, `--color-border`, `--color-borderstrong`, `--color-text`, `--color-muted`, `--color-gold`, `--color-goldhover`, `--color-goldsoft`, `--color-success`, `--color-successsoft`, `--color-danger`, `--color-dangersoft`, `--color-warning`, `--color-warningsoft`, `--color-info`, `--color-infosoft`؛ الخط `--font-sans: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif`؛ الظلال `--shadow-card/-float/-pop` تقابل `s/m/l`.
+
+قواعد base: `*` يرث `border-color: var(--border)`؛ `html` بـ`scroll-behavior: smooth`؛ `body` بخلفية `--bg` ولون `--text` والخط المحدد، `min-height:100vh` و`-webkit-font-smoothing: antialiased`؛ `body::before` طبقة ثابتة `z-index:-1` بتدرّجين شعاعيين `75rem 45rem at 100% -10%` و`60rem 40rem at -10% 110%` من `--gold-glow` إلى شفاف، بشفافية `0.55`؛ `:selection` بـ`--gold-soft`؛ `:focus-visible` بحدّ `2px solid var(--gold)` وإزاحة `2px`؛ أزرار زيادة/نقصان الأرقام مخفية على `input[type=number]`؛ شريط التمرير بعرض 10 بكسل وقبضة `--border-strong` مستديرة.
+
+أدوات مساعدة: `.ltr-nums` (`direction:ltr; unicode-bidi:isolate; font-variant-numeric:tabular-nums`)، `.card` (خلفية surface، حدّ 1px، نصف قطر `1rem`، ظل صغير)، `.gold-line` (تدرّج خطي شفاف→ذهبي→شفاف)، `.text-gradient-gold`، `.scroll-thin`، `.animate-in` (`fade-up 0.28s ease-out both`)، `.skeleton` (تدرّج متحرك `shimmer 1.4s`). حركات `fade-up` و`shimmer` و`spin` معرّفة بـ`@keyframes`.
+
+الطباعة (`@media print`): إخفاء `body::before` و`.no-print`، إظهار `.print-area` بلا ظل ولا حدود، وإجبار `body` على خلفية بيضاء ونص أسود.
+
+`apps/web/index.html`: `<html lang="ar" dir="rtl" data-theme="light">`، favicon `/favicon.svg`، viewport مع `viewport-fit=cover`، `theme-color #C9A227`، وصف «نظام تسعير ومخزون الذهب»، عنوان «ذهب — نظام إدارة الذهب»، ونقطة دخول `/src/main.tsx`.
+
+### 16.2 عميل التشغيل (`main.tsx`, `lib/*`)
+
+- ترتيب الـproviders: `StrictMode > QueryClientProvider > ThemeProvider > AuthProvider > ToastProvider > BrowserRouter > App`.
+- افتراضات React Query: الاستعلامات `retry:1`, `refetchOnWindowFocus:false`, `staleTime:15_000`؛ الطفرات `retry:0`.
+- قبل React يضبط `main.tsx` `document.documentElement.dataset.theme` من `localStorage['gold.theme']` أو `prefers-color-scheme`، مع `try/catch` يعود إلى `light`؛ `themeBootstrapScript` موجود لكن يُشار إليه بـ`void` فقط (الـIIFE المضمن في `main.tsx` هو المستخدم فعلياً). `ThemeProvider` يضيف `style.colorScheme` ويحدّث `meta[name=theme-color]` إلى `#0d0e11` أو `#f7f4ec`.
+- `lib/api.ts`: الأساس `/api`؛ `fetch` مع `credentials:'include'` و`content-type: application/json` عند وجود جسم؛ `204` يُعيد `undefined`؛ النجاح يُقرأ من `json.data`؛ الفشل يبني `ApiError(status, code, message, details)` من `json.error`؛ `displayMessage` يأخذ `details[0].message` عند `VALIDATION_ERROR` وإلا `message`؛ أي 401 غير `/auth/login` يُطلق حدث `auth:expired`؛ فشل الشبكة ⇒ `ApiError(0,'NETWORK','تعذر الاتصال بالخادم، تحقق من الشبكة')`. الدوال `api.get/post/patch/del`، و`qs()` تتخطى `null/undefined/''` وترجع `?...` أو سلسلة فارغة.
+- `lib/auth.tsx`: `ME_KEY=['auth','me']`؛ `/auth/me` عند 401 يُعيد `null`؛ `retry:false`, `staleTime:60_000`؛ `login` يستدعي `/auth/login` ويضبط بيانات ME؛ `logout` يستدعي `/auth/logout` ثم `setQueryData(ME_KEY,null)` و`queryClient.clear()` في `finally`؛ مستمع `auth:expired` يصفّر ME ويحذف كل الاستعلامات غير `auth`؛ `isOwner = data?.role === 'OWNER'`.
+- `lib/format.ts`: `fmtMoney` خانتان (`en-US`)، `fmtWeight` من خانتين إلى ثلاث خانات، `fmtNum` صحيح، `fmtMoneyWithCurrency`، `fmtDate/fmtDateTime/fmtTime` بتنسيق `en-GB` (التاريخ `dd/mm/yyyy` والوقت 24 ساعة، الفاصل ` · `)، و`timeAgo` ⇒ «الآن» / «قبل N دقيقة» / «قبل N ساعة» / «قبل N يوم». الخرائط: `TYPE_LABEL` (قطعة/طقم)، `STATUS_LABEL` (موجود/مباع)، `PURCHASE_STATUS_LABEL` (جديد/مستعمل/كسر)، `BASIS_LABEL` (وزن الذهب الصافي/الوزن الإجمالي/خصم الحجر فقط/خصم الفصوص فقط)، `PROFIT_MODE_LABEL` (نسبة مئوية/مبلغ ثابت/سعر نهائي يدوي)، `FIXED_BASIS_LABEL` (لكل غرام/لكل قطعة)، `STOCKTAKE_TYPE_LABEL` (ربع سنوي/نصف سنوي/سنوي)، `COMPONENT_KIND_LABEL` (خاتم/أسورة/سلسلة/حلق/خلخال/حديدة/تعليقة/أخرى).
+
+**مفاتيح الاستعلام وتبعيات الإبطال:**
+
+| المفتاح | أمثلة الشكل | مَن يُبطلها |
+|---|---|---|
+| `['auth','me']` | ثابت | login/logout/انتهاء الجلسة، تعديل مستخدم |
+| `['settings']` | ثابت | حفظ الإعدادات، CRUD القوائم |
+| `['lookups',kind]` | `['lookups','KARAT']` | CRUD القوائم |
+| `['prices','table']`, `['prices','history',filter,page]` | معاملات | حفظ/جلب السعر ⇒ `prices,dashboard,inventory,reports` |
+| `['dashboard']` | ثابت | السعر، البيع، الإلغاء |
+| `['items',{q,status,type,karat,page}]`, `['items','sale-search',q]`, `['items','next-code',form.type]` | معاملات | إضافة/تعديل/حذف صنف، البيع، الإلغاء، القوائم |
+| `['inventory']` | ثابت | الأسعار، الأصناف، البيع/الإلغاء |
+| `['sales',{...filters,page}]`, `['sales',saleId]` | معاملات | البيع، الإلغاء |
+| `['stocktakes']`, `['stocktakes',id,'differences']` | معاملات | فتح/تعديل سطر/إغلاق الجرد |
+| `['reports','sales',from,to,sellerId,paymentMethodId,karat]`, `['reports','audit',from,to,entity,take]`, `['reports','inventory']` | معاملات | الأسعار، البيع/الإلغاء، إعادة التقييم |
+| `['users']` | ثابت | CRUD المستخدمين |
+
+حفظ الإعدادات يُبطل ستة مفاتيح (الإعدادات، القوائم، الأسعار، المخزون، الأصناف، لوحة المعلومات). تغيير مستخدم يُبطل `users` و`auth/me`. إعادة تقييم المخزون في تبويب «المخزون» تُبطل `reports/inventory`.
+
+### 16.3 الهيكل العام (`app/App.tsx`, `layout/AppShell.tsx`)
+
+المسارات كما في 7.1. `Protected` يعرض `Splash` أثناء التحميل، ويحوّل إلى `/login` مع `state.from`؛ `OwnerOnly` يعرض «هذه الصفحة للمالك فقط» ووصفها وزر «رجوع»؛ المسار غير المعروف يعرض «الصفحة غير موجودة» وزر «العودة للرئيسية». `/login` إذا كان المستخدم مسجلاً ⇒ تحويل إلى `/`.
+
+**AppShell:** سايدبار ثابت بعرض 268px (`lg:translate-x-0`) يتحول إلى درج منزلق على الشاشات الصغيرة مع طبقة تعتيم `z-40`؛ ترويسة شعار `Au` بتدرّج `#e8cf8a → #c9a227 → #8a6e14` واسم المحل من `settings.shopName` (الافتراضي «محل الذهب») والسطر «نظام تسعير ومخزون الذهب». ترتيب التنقل: الرئيسية، أسعار الذهب، الذهب، المبيعات، المخزون والتقييم، الجرد، التقارير، الإعدادات، المستخدمون (آخر ثلاثة للمالك فقط). أسفل السايدبار: «آخر تحديث للسعر» بـ`timeAgo` أو «لم يُدخل بعد»، ثم «الإصدار 0.2.1 · جميع الحقوق محفوظة».
+
+الهيدر لاصق (`sticky top-0`, `bg-bg/85`, `backdrop-blur-md`) يحوي زر القائمة على الجوال، مؤشر «السوق الآن» النابض على الشاشات المتوسطة، شريط «أونصة / صرف / غرام 21» (الأونصة بصيغة `$...`، والصرف برقم، وغرام 21 بتمييز ذهبي)، شارة «السعر متقادم» إن لزم، زر تبديل الثيم (شمس/قمر)، وقائمة المستخدم. القائمة تعرض الاسم والمعرّف `@username` وعنصرَي «تغيير كلمة المرور» و«تسجيل الخروج». نافذة تغيير كلمة المرور: الحقول «كلمة المرور الحالية / الجديدة / التأكيد»، تحقق محلي (≥8 وتطابق)، رسائل «كلمتا المرور غير متطابقتين» و«سيتم إنهاء الجلسات الأخرى تلقائياً بعد التغيير»، واستدعاء `POST /auth/change-password`. المحتوى في `<main>` بعرض أقصى 1400px وهامش `px-3 sm:px-5 lg:px-7`.
+
+### 16.4 الشاشات
+
+#### 16.4.1 الدخول (`pages/Login.tsx`)
+شاشة من عمودين على `lg`: عمود النموذج في بداية الاتجاه (يمين الصفحة في RTL) ولوحة تسويقية داكنة في نهايته. العنوان «أهلاً بعودتك» والوصف «سجّل الدخول للوصول إلى الأسعار اللحظية، المخزون، والمبيعات.»؛ حقول «اسم المستخدم» (placeholder `admin`) و«كلمة المرور» مع زر إظهار/إخفاء؛ زر «تسجيل الدخول» يتحول إلى «جارٍ الدخول…». تفصيلة `<details>` بعنوان «بيانات الدخول الأولية» تعرض صراحةً `admin / Admin@2026` و`seller / Seller@2026` ونصيحة تغييرها. اللوحة الأخرى تعرض «تحويل دقيق من الأونصة إلى العيار»، العبارة «كل غرام محسوب بعيارة الصحيح، من سعر الأونصة إلى الفاتورة»، المعادلة مع 31.1035، وصفوف 24K/21K/18K بمعاملات 1.000/0.875/0.750.
+
+#### 16.4.2 الرئيسية (`pages/Dashboard.tsx`)
+ترحيب «مرحباً، ${user.name}» مع زري «تحديث» و«بيع جديد». تنبيهات: «لم يتم إدخال أسعار الذهب بعد» مع زر «إدخال الأسعار»؛ «الأسعار متقادمة» مع عدد الساعات والحد. بطاقة «أسعار الغرام اليوم» تعرض صفوف العيارات (المعامل، السعر مع `{currency}/غ`) وسطر الأونصة/الصرف/«أونصة تروي = 31.1035 غرام»/اسم مُدخل السعر. أربع بطاقات: «مبيعات اليوم»، «مبيعات الشهر»، «قطع متاحة»، «وزن الذهب الصافي». وتليها مجموعات «آخر المبيعات» (6 فواتير، رابط «الكل»، حالة فارغة «لا مبيعات بعد»)، «إجراءات سريعة» (تسجيل بيع جديد، إضافة قطعة ذهب، تحديث أسعار الذهب، تقييم المخزون)، «آخر جرد» (جرد #id، مفتوح/مغلق، «لم يُسجَّل أي جرد بعد»)، وبطاقة «للمالك» تشير إلى التقارير.
+
+#### 16.4.3 الأسعار (`pages/Prices.tsx`)
+العنوان «أسعار الذهب». شريط تحذير التقادم. بطاقة «تحديث الأسعار» مع رابط «توثيق goldapi.dev»، وزر «جلب من goldapi.dev» (للمالك عند التهيئة)، أو شارة «سعر الأونصة يعدّله المالك»/«API غير مهيأ»؛ شارات «مصدر الأونصة: API مباشر/يدوي»، «تحديث تلقائي كل N دقيقة»، «التحديث التلقائي معطّل»، ونص «المفتاح يعمل من داخل الخادم فقط ولا يظهر في المتصفح». حقول «سعر أونصة الذهب (دولار)» بـ`USD/oz` و«سعر الصرف (العملة المحلية مقابل الدولار)» مع تلميح القيمة الحالية والمُدخل والوقت، وزر «حفظ» لا يُفعّل إلا عند التغيير وصلاحية المالك. معاينة حيّة عبر `buildPriceTable` لجدول العيارات. أسفل الصفحة: بطاقة «سجل الأسعار» بتبويبات `OUNCE/FX`، فلتر وصفحات، ورسالة «لا تحديثات في هذه الفترة». عند الجلب الناجح تظهر رسالة «تم جلب سعر الأونصة من goldapi.dev: $... · تحديث المزوّد ...».
+
+#### 16.4.4 الأصناف ونموذج الصنف (`pages/Items.tsx`, `pages/ItemForm.tsx`)
+قائمة «الذهب»: بحث فوري بـdebounce 300ms بplaceholder «ابحث بالكود، الاسم، أو الوصف…»، فلاتر «كل الأنواع/قطعة/طقم» و«كل العيارات» و«الحالة»، صفحات بحجم 20، زر «إضافة قطعة ذهب» إن سمحت الصلاحية. الأعمدة: الكود، الصنف (النوع·التصنيف·المقاس)، العيار (`NK`)، الوزن (إجمالي/صافي)، الكمية، التكلفة (مشروطة)، الحالة، وأزرار تعديل/حذف (الحذف للمالك فقط).
+
+نموذج القطعة: «نوع الصنف» (قطعة/طقم)، «كود الصنف»، «اسم القطعة»، «العيار»، «التصنيف» (يُثبَّت على «طقم» ويُعطَّل للطقم)، «المقاس»، «الكمية» مع تأكيد «أؤكد أن جميع القطع بنفس الوزن والمواصفات والعيار» عند الكمية >1؛ «الأوزان» (إجمالي/حجر/فصوص/سعر الحجر) مع حساب «وزن الذهب الصافي»؛ «مكونات الطقم» بصفوف `ComponentRow` (النوع، العيار، الاسم، الأوزان، سعر الحجر، ملاحظات) وملخص أوزان؛ «بيانات الشراء من الجملة» (سعر الغرام، العملة، سعر الصرف يوم الشراء، حالة الشراء، تاريخ الإضافة)، تليها بطاقة «أين سعر البيع؟»؛ «تفاصيل إضافية» (المورّد، بلد المنشأ، المصنّع/العلامة، الوصف، الملاحظات) مع إضافة سريعة للقوائم عبر `POST /lookups` (SUPPLIER/MANUFACTURER فقط). الشريط الجانبي اللاصق يعرض «ملخص الشراء — تكلفة القطعة كما اشتريتها اليوم — بدون سعر بيع»؛ شريط حفظ مثبت على الجوال. التحقق المحلي: وزن إجمالي >0، مجموع الحجر والفصوص < الإجمالي، تأكيد التماثل، أوزان المكوّنات موجبة.
+
+#### 16.4.5 بيع جديد (`pages/SaleNew.tsx`)
+العنوان «بيع جديد» والوصف «ابحث عن الصنف بالكود أو الاسم، أضفه للسلة، ثم أكّد الفاتورة.»؛ حقل بحث بplaceholder «امسح كود الصنف أو اكتب اسمه…»، نتائج بالسعر المقترح، وسلة فارغة «السلة فارغة». كل سطر: الكمية (زرّا +/-) وسعر البيع بالعملة مع زر استخدام السعر المقترح، و«إجمالي سعر البيع». تفاصيل التكلفة كما في 7.3 («سعر الشراء … / وحدة»، «تكلفة الشراء»، «الربح/الخسارة»، و«عدد القطع في الطقم»)، ولا تظهر إطلاقاً عند `showCost=false`. لوحة «سياسة الربح والتقريب» بعنوان فرعي «تُطبَّق على هذه الفاتورة فقط، ولا تغيّر افتراضيات المحل» وشارة تجمع النمط والأساس؛ «طريقة الربح»، حقل ديناميكي («نسبة الربح» / «الربح لكل غرام (LYD)» / «الربح لكل قطعة (LYD)») أو نص «تُدخل أسعار البيع يدوياً لكل قطعة»؛ زرا «لكل غرام» و«لكل قطعة»؛ «تقريب السعر النهائي»؛ «سعر الصرف المستعمل» مع «صرف النقدي» و«صرف الصك المصدق». «العميل والدفع» (اسم العميل، هاتف `09xxxxxxxx`، طريقة الدفع بplaceholder «غير محددة»). «ملخص الفاتورة»: عدد الأصناف، عدد القطع، إجمالي الوزن، البائع، ثم التكلفة/الإجمالي/الربح عند السماح. نافذة «تأكيد إتمام البيع» تعرض ملخص السياسة والإجماليات. بعد الحفظ: نافذة «تم إتمام البيع» بعنوان فرعي «الفاتورة ... محفوظة، ويمكنك طباعة الإيصال الآن.».
+
+#### 16.4.6 المبيعات وتفاصيل الفاتورة (`pages/Sales.tsx`, `pages/SaleDetail.tsx`)
+قائمة المبيعات: تبويبات «كل الفواتير / مكتملة / ملغاة»، فلاتر «من تاريخ / إلى تاريخ / البائع» للمالك فقط وزر مسح، أعمدة الفاتورة، العميل، الأصناف، البائع، الدفع، الإجمالي، الحالة («مكتملة»/«ملغاة»)، التاريخ. التفاصيل: عنوان «الفاتورة INV-...»، أزرار «رجوع / طباعة / إلغاء الفاتورة» (للمالك والفواتير المكتملة)، شريط «فاتورة ملغاة — السبب … ألغاها …». جدول «أصناف الفاتورة» بالأعمدة الصنف/العيار/الوزن/الكمية/سعر الوحدة/الإجمالي وتذييل «الإجمالي قبل الإلغاء». بطاقة جانبية للإيصال والسياسة المحفوظة (نمط الربح، التقريب، سعر الصرف، `fixedBasis` إن وُجد). نافذة الإلغاء تطلب سبباً ≥3 أحرف برسالة «اكتب سبباً واضحاً لا يقل عن 3 أحرف»، ونجاحها «تم إلغاء الفاتورة وإرجاع الكميات للمخزون».
+
+#### 16.4.7 المخزون والتقييم (`pages/Inventory.tsx`)
+بطاقات: «قيمة المخزون الحالية»، «وزن الذهب الصافي»، «عدد القطع المتاحة»، والرابعة «الهامش التقديري» عند إظهار التكلفة وإلا «أعلى عيار بالقيمة» (هذا هو التكيّف الخاص بالبائع). تنبيه «التقييم غير متاح بعد». قسم «التوزيع حسب العيار» ببطاقات نسبة القيمة (شريط تدرّج ذهبي) وشارة أساس الوزن الفعلي. جدول الأصناف فيه بحث وفلاتر عيار/نوع/حالة، وأعمدة القيمة/الوزن/الصافي/التكلفة والهامش عند السماح.
+
+#### 16.4.8 الجرد (`pages/Stocktake.tsx`, `pages/StocktakeDetail.tsx`)
+قائمة الجرد: شريط «يوجد جرد مفتوح الآن» مع «متابعة الجرد»؛ بطاقات «الجرد الحالي / جردات منجزة / آخر جرد مغلق / إجمالي الأسطر المسجّلة»؛ جدول «سجل الجردات»؛ نص توضيحي يذكر لقطة الفتح وBR-14. نافذة «فتح جرد جديد»: «نوع الجرد» (ربع/نصف/سنوي) و«ملاحظات (اختياري)» بحد 2000، مع تحذير تسجيل القيم صفراً عند عدم جاهزية الأسعار.
+
+تفاصيل الجرد: عنوان «جرد <النوع>» وأزرار رجوع/تحديث/«إغلاق الجرد» للمالك. شريط مفتوح أو «هذا الجرد مغلق ونهائي». أربع بطاقات: «نسبة الإنجاز»، «قطع غير موجودة»، «فروقات الوزن»، «قيمة اللقطة عند الفتح»، مع شريط تقدّم. تبويبات «كل الأصناف / غير معدودة / فروقات» وبحث «ابحث بالكود أو الاسم…». رأس الجدول: الصنف، الوزن المتوقع، الوزن المعدود، الفرق، موجود. كل سطر يحوي حقل «الوزن المعدود» يُحفظ عند `onBlur` أو Enter، شارة «مطابق» أو فرق موجب/سالب، ومربع «موجود/غير موجود» (معطّل بعد الإغلاق). «تقرير الفروقات» بثلاثة كتل: «قطع غير موجودة»، «أوزان مختلفة»، «أصناف غير مسجّلة بالجرد»، مع شارة «لا فروقات / توجد فروقات». نافذة «إغلاق الجرد نهائياً؟» تعرض معدود/غير موجود/صافي الفرق وتحذيراً إن بقيت أصناف غير معدودة، وزر «تأكيد الإغلاق».
+
+#### 16.4.9 التقارير (`pages/Reports.tsx`)
+خمسة تبويبات: «المبيعات / الأرباح / المخزون / سجل الأسعار / سجل التعديلات»، للمالك فقط.
+
+- **المبيعات:** فلاتر التاريخ والبائع وطريقة الدفع والعيار وزر «مسح الفلاتر»؛ بطاقات «عدد الفواتير المكتملة / إجمالي المبيعات / متوسط الفاتورة»؛ توزيعات «المبيعات حسب البائع»، «حسب طريقة الدفع»، «حسب العيار»؛ جدول «فواتير الفترة» بالأعمدة الفاتورة/العميل/البائع/الدفع/القطع/الإجمالي؛ حالة فارغة «لا فواتير في هذه الفترة».
+- **الأرباح:** نفس نطاق التاريخ، بطاقات الإيراد/التكلفة/الربح/الهامش، وجدول «تفصيل الأرباح حسب القطعة» (الصنف، الكمية، الإيراد، التكلفة، الربح، النسبة) مع حسابات 14.4.
+- **المخزون:** «تفصيل تقييم المخزون» مع قيم ووزن وهامش لكل صنف، ورابط يفتح بطاقة الصنف؛ حالة فارغة «المخزون فارغ».
+- **سجل الأسعار:** «سجل تحديثات الأسعار» بالتاريخ/النوع/القيمة/المصدر/المستخدم، فلاتر وحالة «لا تحديثات في هذه الفترة».
+- **سجل التعديلات:** فلاتر from/to و«السجل» وعدد الصفوف (1–500، افتراضي 100)؛ جدول «سجل التعديلات» بالأعمدة العملية/السجل/المستخدم/التاريخ/التفاصيل؛ شارة حمراء للإجراءات التي تبدأ بـ`DELETE` أو `CANCEL`؛ حالة «لا سجلات في هذه الفترة».
+
+خريطة التسميات العربية في الواجهة (`ACTION_LABEL`) هي: `CREATE_ITEM:'إضافة صنف'`, `UPDATE_ITEM:'تعديل صنف'`, `DELETE_ITEM:'حذف صنف'`, `CREATE_SALE:'بيع جديد'`, `CANCEL_SALE:'إلغاء فاتورة'`, `OPEN_STOCKTAKE:'فتح جرد'`, `CLOSE_STOCKTAKE:'إغلاق جرد'`, `UPDATE_SETTINGS:'تعديل الإعدادات'`, `CREATE_USER:'إضافة مستخدم'`, `UPDATE_USER:'تعديل مستخدم'`, `RESET_PASSWORD:'تغيير كلمة مرور'`, `CREATE_LOOKUP:'إضافة قيمة'`, `UPDATE_LOOKUP:'تعديل قيمة'`, `DELETE_LOOKUP:'حذف قيمة'`, `DEACTIVATE_LOOKUP:'إخفاء قيمة'`, `UPDATE_PRICES:'تحديث الأسعار'`, `LOGIN:'تسجيل دخول'`, `LOGOUT:'تسجيل خروج'`. خريطة الكيانات: `item:'صنف'`, `sale:'فاتورة'`, `user:'مستخدم'`, `lookup:'قائمة'`, `settings:'إعدادات'`, `stocktake:'جرد'`, `price:'سعر'`.
+
+**عدم تطابق موثّق:** الخريطة تستخدم `UPDATE_PRICES` (جمع) بينما الخادم يصدر `UPDATE_PRICE` و`FETCH_PRICE` و`AUTO_FETCH_PRICE`؛ وتتضمن `LOGIN` و`LOGOUT` مع أن الخادم لا يصدر `LOGOUT`؛ وتفتقد `CHANGE_PASSWORD` و`FETCH_PRICE` و`AUTO_FETCH_PRICE` و`UPDATE_STOCKTAKE_LINE`. لذلك تظهر هذه الرموز كنص خام في شاشة التدقيق. هذا سلوك حالي مقصود توثيقه كما هو؛ المجموعة المعيارية الصادرة فعلياً مذكورة في 8.4 و14.6.
+
+#### 16.4.10 الإعدادات (`pages/Settings.tsx`)
+العنوان «إعدادات المحل» والوصف «هوية المحل، قواعد الاحتساب، الربح، والأسعار — التغييرات تسري على كل الشاشات مباشرة.»؛ شريط «تغييرات غير محفوظة» مع حفظ/رجوع. البطاقات: «هوية المحل» (اسم المحل، رمز العملة، العيار الافتراضي)، «أكواد القطع» (تلقائي/يدوي)، «أساس احتساب الوزن» (خصم الحجر/الفصوص)، «سياسة الربح والتقريب الافتراضية» (النمط، القيمة، التقريب 0/5/10، زرا `fixedBasis`)، «أسعار الذهب» (مصدر الصرف، «تنبيه تقادم السعر بعد (ساعة)» بين 1 و168)، «صلاحيات البائع» («إظهار تكلفة الشراء والهامش للبائع» و«السماح للبائع بإضافة أصناف جديدة»)، و«ملخص القواعد الحالية». تحقق: اسم المحل والعملة مطلوبان، القيمة ≥0 وبحد أقصى 100 في `PERCENT`، الساعات 1–168. قسم «القوائم المرجعية» بستة تبويبات (التصنيفات، الموردون، المصانع، بلاد المنشأ، طرق الدفع، العيارات) مع إضافة/تعديل (القيمة والترتيب، «نشط ويظهر في القوائم المنسدلة») وحذف يُترجم إلى إخفاء عند الاستخدام؛ العيار محصور 1–24.
+
+#### 16.4.11 المستخدمون (`pages/Users.tsx`)
+بطاقات «إجمالي المستخدمين / المالك / البائعون / حسابات معطّلة» وجدول «حسابات النظام» (الاسم، اسم الدخول، الدور، الحالة، شارة «أنت»، إجراءات تعديل/كلمة مرور/تفعيل). نوافذ: «مستخدم جديد» و«تعديل البيانات» و«تغيير كلمة المرور»؛ الحقول الاسم الكامل، اسم الدخول، الدور، كلمة المرور/Tأكيد، ومفتاح «الحساب نشط ويمكنه تسجيل الدخول مباشرة». التحقق: اسم الدخول `[A-Za-z0-9._-]+` بطول ≥3، الاسم ≥2، وكلمة المرور ≥8؛ منع تعديل دور النفس أو تعطيلها.
+
+### 16.5 الجداول المتجاوبة (`components/ui/data-table.tsx`)
+`DataTable` يعرض جدولاً على `sm+` (`hidden ... sm:block` مع تمرير أفقي) وبطاقات `<ul>` على الشاشات الأصغر (`sm:hidden`)؛ `Column.hideOnMobile` يُخفي عموداً في البطاقات، و`labelOnMobile:false` يُخفي عنوانه ويجعل القيمة بعرض كامل. `loading` ⇒ `LoadingBlock rows=5`؛ لا صفوف ⇒ `EmptyState title='لا توجد بيانات'` أو ما يمرّره المستدعي؛ `onRowClick` يضيف مؤشراً وحالة hover. `Pagination` تخفي نفسها عند صفحة واحدة، وتعرض «عرض X–Y من Z» مع «السابق» و`page / pages` و«التالي».
+
+### 16.6 إيصال الطباعة (`components/Receipt.tsx`)
+`<div class="print-area">` بعرض أقصى 430px على الشاشة، خلفية بيضاء دائماً وألوان طباعة ثابتة (`#111,#555,#666,#777,#999,#bbb,#e2e2e2,#c0392b,#222`) لا تتبع الثيم. المحتوى بالترتيب: اسم المحل، «فاتورة بيع ذهب»؛ «رقم الفاتورة / التاريخ / البائع / العميل / الهاتف»؛ جدول أعمدة «الصنف / عيار / وزن / كمية / السعر»؛ «عدد القطع / طريقة الدفع / سعر الصرف (نقدي أو صك مصدق) / الإجمالي {currency}»؛ شريط «فاتورة ملغاة — السبب» عند الإلغاء؛ «شكراً لتعاملكم معنا · البضاعة المباعة لا تُرد إلا وفق سياسة المحل»؛ وسطر `invoiceNo · fmtDateTime` باتجاه LTR. الطباعة عبر `window.print()` من شاشة البيع أو التفاصيل، ولا يوجد توليد PDF في الخادم (راجع 1.4).
+
+### 16.7 معجم المكوّنات والملفات
+`components/ui/primitives.tsx` يوفّر `Button` (variants: primary/secondary/ghost/soft/danger، sizes، loading/icon)، `Card`, `Field` (label/hint/error/required)، `Input`, `NumberInput` (suffix)، `Select` (placeholder)، `Textarea`, `Checkbox`, `Badge` (tone success/danger/warning/gold/info/muted، مع نقطة `dot`)، `StatCard`، `PageHeader`، `SectionTitle`، `Tabs` (items بـlabel/icon/badge)، `EmptyState`، `Skeleton`/`LoadingBlock`، `Modal`، `ConfirmDialog`، و`Toast`. `components/Brand.tsx` يوفّر `GoldMark` و`Splash`. ملفات الواجهة: `app/App.tsx`, `layout/AppShell.tsx`, `components/{Receipt,Brand}.tsx`, `components/ui/{primitives,data-table,toast,overlay}.tsx`, `lib/{api,auth,theme,format,types,pricing-preview,cn}.ts(x)`, و`pages/{Login,Dashboard,Prices,Items,ItemForm,Sales,SaleNew,SaleDetail,Inventory,Stocktake,StocktakeDetail,Reports,Settings,Users}.tsx`.
 
 > للاستخدام اليومي راجع [USER_MANUAL.md](USER_MANUAL.md)، وللفروق بين الإصدارات راجع [CHANGELOG.md](CHANGELOG.md)، ولخلفية القرارات راجع [ARCHITECTURE.md](ARCHITECTURE.md) و[DECISIONS.md](DECISIONS.md).

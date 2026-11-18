@@ -10,13 +10,16 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const mdPath = join(root, 'docs', 'USER_MANUAL.md');
-const pdfPath = join(root, 'docs', 'USER_MANUAL.pdf');
-const htmlPath = join(root, 'docs', '.user-manual.tmp.html');
+const mdName = process.env.DOCS_MD ?? 'USER_MANUAL.md';
+const pdfName = process.env.DOCS_PDF ?? mdName.replace(/\.md$/i, '.pdf');
+const mdPath = join(root, 'docs', mdName);
+const pdfPath = join(root, 'docs', pdfName);
+const htmlPath = join(root, 'docs', `.${basename(mdName, '.md')}.tmp.html`);
+const pageTitle = process.env.DOCS_TITLE ?? 'دليل استعمال نظام ذهب';
 const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 
 const md = readFileSync(mdPath, 'utf8');
@@ -246,7 +249,7 @@ const html = `<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
-<title>دليل استعمال نظام ذهب</title>
+<title>${escapeHtml(pageTitle)}</title>
 <style>${css}</style>
 </head>
 <body>
@@ -296,4 +299,4 @@ if (stats.length < 10_000) {
   process.exit(1);
 }
 
-console.log(`✓ تم توليد docs/USER_MANUAL.pdf (${(stats.length / 1024).toFixed(0)} كيلوبايت)`);
+console.log(`✓ تم توليد docs/${pdfName} (${(stats.length / 1024).toFixed(0)} كيلوبايت)`);

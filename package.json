@@ -18,6 +18,7 @@
     "test:integration": "node tools/integration-test.mjs",
     "db:cleanup-qa": "npm run db:cleanup-qa -w @gold/api",
     "docs:pdf": "node tools/build-user-guide.mjs",
+    "docs:pdf:spec": "node tools/build-spec-pdf.mjs",
     "typecheck": "npm run typecheck -w @gold/pricing && npm run typecheck -w @gold/api && npm run typecheck -w @gold/web",
     "db:generate": "npm run db:generate -w @gold/api",
     "db:push": "npm run db:push -w @gold/api",

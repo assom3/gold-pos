@@ -1,6 +1,6 @@
 # ذهب — نظام تسعير ومخزون الذهب
 
-> الإصدار الحالي: **0.2.1**. المرجع التقني الكامل لإعادة البناء: **[docs/SYSTEM_SPECIFICATION.md](docs/SYSTEM_SPECIFICATION.md)**.
+> الإصدار الحالي: **0.2.1**. المرجع التقني الكامل لإعادة البناء: **[docs/SYSTEM_SPECIFICATION.md](docs/SYSTEM_SPECIFICATION.md)** — ونسخة PDF جاهزة للإرسال: **[docs/SYSTEM_SPECIFICATION.pdf](docs/SYSTEM_SPECIFICATION.pdf)**.
 
 نظام نقاط بيع عربي (RTL) لمحل ذهب: تسعير لحظي مبني على سعر الأونصة وسعر الصرف، إدارة مخزون وأطقم، شراء بالغرام، بيع وفواتير بسياسة ربح وتقريب وسعر صرف لكل فاتورة، جرد دوري، تقارير للمالك، وصلاحيات مالك/بائع.
 
@@ -113,6 +113,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\mysql-stop.ps1
 | `npm.cmd run test:stress` | فحص حِمل وتزامن للمسارات الحساسة |
 | `npm.cmd run db:cleanup-qa` | حذف بيانات الاختبار (`QA-`) المتبقية بعد الفحوص |
 | `npm.cmd run docs:pdf` | تحديث `docs/USER_MANUAL.pdf` من دليل Markdown عند الحاجة |
+| `npm.cmd run docs:pdf:spec` | تحديث `docs/SYSTEM_SPECIFICATION.pdf` من المواصفات الكاملة |
 | `npm.cmd run db:generate` | توليد Prisma Client |
 | `npm.cmd run db:push` | مزامنة مخطط Prisma مع MySQL (المسار المعتمد) |
 | `npm.cmd run db:migrate` | إنشاء أول ترحيل عند الحاجة (لا يوجد مجلد `migrations` بعد) |
@@ -159,6 +160,7 @@ Gold/
    ├─ ARCHITECTURE.md
    ├─ DECISIONS.md
    ├─ SYSTEM_SPECIFICATION.md  المواصفات الكاملة لإعادة البناء
+   ├─ SYSTEM_SPECIFICATION.pdf  نسخة PDF من المواصفات الكاملة
    ├─ CHANGELOG.md         سجل التغييرات
    ├─ USER_MANUAL.md       دليل الاستعمال اليومي (لأي مستخدم)
    └─ USER_MANUAL.pdf      نسخة PDF جاهزة للجوال
